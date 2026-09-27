@@ -1311,8 +1311,6 @@ func kiroRuntimeEndpoint(region string) string {
 	return fmt.Sprintf("https://runtime.%s.kiro.dev/", region)
 }
 
-const defaultNativeEffort = "medium"
-
 var nativeEffortRank = map[string]int{
 	"low":    0,
 	"medium": 1,
@@ -1321,36 +1319,30 @@ var nativeEffortRank = map[string]int{
 	"max":    4,
 }
 
-var nativeEffortEnums = map[string][]string{
-	"claude-opus-4.8":      {"low", "medium", "high", "xhigh", "max"},
-	"claude-opus-4.7":      {"low", "medium", "high", "xhigh", "max"},
-	"claude-opus-4.6":      {"low", "medium", "high", "max"},
-	"claude-sonnet-4.6":    {"low", "medium", "high", "max"},
-	"claude-opus-4.6-1m":   {"low", "medium", "high", "max"},
-	"claude-sonnet-4.6-1m": {"low", "medium", "high", "max"},
-}
-
 func resolveNativeEffort(kiroModel string, anthropicReq AnthropicRequest) string {
 	requested := ""
 	if anthropicReq.OutputConfig != nil {
 		requested = strings.ToLower(strings.TrimSpace(anthropicReq.OutputConfig.Effort))
 	}
 	if requested == "" && isThinkingEnabled(anthropicReq) {
-		requested = defaultNativeEffort
+		requested = models.DefaultEffort(kiroModel)
 	}
 	if requested == "" {
 		return ""
 	}
-	if _, ok := nativeEffortRank[requested]; !ok {
+	requestedRank, ok := nativeEffortRank[requested]
+	if !ok {
 		return ""
 	}
-	allowed, ok := nativeEffortEnums[kiroModel]
-	if !ok || len(allowed) == 0 {
+	allowed := models.EffortLevels(kiroModel)
+	if len(allowed) == 0 {
 		return ""
 	}
 	if slices.Contains(allowed, requested) {
 		return requested
 	}
+
+	_ = requestedRank
 	return allowed[len(allowed)-1]
 }
 

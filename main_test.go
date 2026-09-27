@@ -87,6 +87,44 @@ func TestGetKiroModelID(t *testing.T) {
 // resolves the common current ids offline (catalog unreachable), and that
 // unknown ids pass through as a best-effort candidate rather than being
 // substituted for a different model.
+func TestResolveNativeEffort(t *testing.T) {
+	cases := []struct {
+		name      string
+		model     string
+		requested string
+		want      string
+	}{
+		{"opus 5.5 max", "claude-opus-5.5", "max", "max"},
+		{"opus 5 xhigh", "claude-opus-5", "xhigh", "xhigh"},
+		{"sonnet 5 low", "claude-sonnet-5", "low", "low"},
+		{"opus 4.8 xhigh", "claude-opus-4.8", "xhigh", "xhigh"},
+		{"sonnet 4.6 max", "claude-sonnet-4.6", "max", "max"},
+		{"sonnet 4.6 xhigh keeps existing clamp", "claude-sonnet-4.6", "xhigh", "max"},
+		{"haiku has no effort", "claude-haiku-4.5", "high", ""},
+		{"unknown effort rejected", "claude-opus-5.5", "ultra", ""},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := AnthropicRequest{OutputConfig: &AnthropicOutputConfig{Effort: tc.requested}}
+			if got := resolveNativeEffort(tc.model, req); got != tc.want {
+				t.Errorf("resolveNativeEffort(%q, %q) = %q, want %q", tc.model, tc.requested, got, tc.want)
+			}
+		})
+	}
+
+	// When thinking is enabled but the client omitted output_config.effort,
+	// preserve the model's API default instead of forcing one global level.
+	opus55 := AnthropicRequest{Thinking: &AnthropicThinking{Type: "enabled"}}
+	if got := resolveNativeEffort("claude-opus-5.5", opus55); got != "medium" {
+		t.Errorf("Opus 5.5 thinking default = %q, want medium", got)
+	}
+	sonnet5 := AnthropicRequest{Thinking: &AnthropicThinking{Type: "enabled"}}
+	if got := resolveNativeEffort("claude-sonnet-5", sonnet5); got != "high" {
+		t.Errorf("Sonnet 5 thinking default = %q, want high", got)
+	}
+}
+
 func TestGetKiroModelIDStaticFallback(t *testing.T) {
 	orig := modelCatalog
 	modelCatalog = models.NewCatalog(time.Minute, func() ([]models.KiroModel, error) {

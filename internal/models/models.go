@@ -575,6 +575,42 @@ func trimRate(r float64) string {
 	return strconv.FormatFloat(r, 'g', -1, 64)
 }
 
+// EffortLevels returns the effort levels Kiro can forward natively for a
+// Claude model. The keys use Kiro's dotted backend IDs because this function is
+// called after model resolution.
+//
+// Keep this table aligned with Anthropic's public per-model effort support. It
+// is also used to advertise effort capabilities through GET /v1/models so
+// Claude Desktop can render the effort picker for third-party inference.
+func EffortLevels(modelID string) []string {
+	levels, ok := map[string][]string{
+		"claude-opus-5.5":   {"low", "medium", "high", "xhigh", "max"},
+		"claude-opus-5":     {"low", "medium", "high", "xhigh", "max"},
+		"claude-sonnet-5":   {"low", "medium", "high", "xhigh", "max"},
+		"claude-opus-4.8":   {"low", "medium", "high", "xhigh", "max"},
+		"claude-opus-4.7":   {"low", "medium", "high", "xhigh", "max"},
+		"claude-opus-4.6":   {"low", "medium", "high", "max"},
+		"claude-sonnet-4.6": {"low", "medium", "high", "max"},
+		"claude-opus-4.5":   {"low", "medium", "high"},
+	}[strings.ToLower(strings.TrimSpace(modelID))]
+	if !ok {
+		return nil
+	}
+	return append([]string(nil), levels...)
+}
+
+// DefaultEffort returns the API default effort for models that support effort.
+// Opus 5.5 is the sole current exception to the general high default.
+func DefaultEffort(modelID string) string {
+	if len(EffortLevels(modelID)) == 0 {
+		return ""
+	}
+	if strings.EqualFold(strings.TrimSpace(modelID), "claude-opus-5.5") {
+		return "medium"
+	}
+	return "high"
+}
+
 // apiModel is one entry in the Anthropic Models API response shape
 // (GET /v1/models). Claude Desktop's gateway model discovery hits this endpoint
 // at launch and auto-populates its model picker from it.
@@ -583,12 +619,60 @@ func trimRate(r float64) string {
 // and are how Claude Desktop learns a model's context window — without them it
 // falls back to a 200K default even for a 1M-context model. They're emitted with
 // omitempty so a 0 (unknown) limit is left off rather than forced to a wrong value.
+//
+// Capabilities and CreatedAt are part of the current Models API shape. In
+// particular, Claude Desktop uses capabilities.effort to decide whether the
+// effort picker should be shown for a discovered third-party model.
+type apiCapabilitySupport struct {
+	Supported bool `json:"supported"`
+}
+
+type apiContextManagementCapability struct {
+	ClearThinking apiCapabilitySupport `json:"clear_thinking_20251015"`
+	ClearToolUses apiCapabilitySupport `json:"clear_tool_uses_20250919"`
+	Compact       apiCapabilitySupport `json:"compact_20260112"`
+	Supported     bool                 `json:"supported"`
+}
+
+type apiEffortCapability struct {
+	High      apiCapabilitySupport  `json:"high"`
+	Low       apiCapabilitySupport  `json:"low"`
+	Max       apiCapabilitySupport  `json:"max"`
+	Medium    apiCapabilitySupport  `json:"medium"`
+	Supported bool                  `json:"supported"`
+	XHigh     *apiCapabilitySupport `json:"xhigh"`
+}
+
+type apiThinkingTypes struct {
+	Adaptive apiCapabilitySupport `json:"adaptive"`
+	Enabled  apiCapabilitySupport `json:"enabled"`
+}
+
+type apiThinkingCapability struct {
+	Supported bool             `json:"supported"`
+	Types     apiThinkingTypes `json:"types"`
+}
+
+type apiModelCapabilities struct {
+	Batch             apiCapabilitySupport           `json:"batch"`
+	Citations         apiCapabilitySupport           `json:"citations"`
+	CodeExecution     apiCapabilitySupport           `json:"code_execution"`
+	ContextManagement apiContextManagementCapability `json:"context_management"`
+	Effort            apiEffortCapability            `json:"effort"`
+	ImageInput        apiCapabilitySupport           `json:"image_input"`
+	PDFInput          apiCapabilitySupport           `json:"pdf_input"`
+	StructuredOutputs apiCapabilitySupport           `json:"structured_outputs"`
+	Thinking          apiThinkingCapability          `json:"thinking"`
+}
+
 type apiModel struct {
-	Type           string `json:"type"`
-	ID             string `json:"id"`
-	DisplayName    string `json:"display_name"`
-	MaxInputTokens int    `json:"max_input_tokens,omitempty"`
-	MaxTokens      int    `json:"max_tokens,omitempty"`
+	Type           string                `json:"type"`
+	ID             string                `json:"id"`
+	Capabilities   *apiModelCapabilities `json:"capabilities"`
+	CreatedAt      string                `json:"created_at"`
+	DisplayName    string                `json:"display_name"`
+	MaxInputTokens int                   `json:"max_input_tokens,omitempty"`
+	MaxTokens      int                   `json:"max_tokens,omitempty"`
 }
 
 // apiModelList is the Anthropic Models API list envelope.
@@ -597,6 +681,55 @@ type apiModelList struct {
 	HasMore bool       `json:"has_more"`
 	FirstID *string    `json:"first_id"`
 	LastID  *string    `json:"last_id"`
+}
+
+func supportsInputType(m KiroModel, want string) bool {
+	for _, inputType := range m.SupportedInputTypes {
+		if strings.EqualFold(strings.TrimSpace(inputType), want) {
+			return true
+		}
+	}
+	return false
+}
+
+func modelCapabilities(m KiroModel) *apiModelCapabilities {
+	levels := EffortLevels(m.ModelID)
+	if len(levels) == 0 {
+		return nil
+	}
+
+	has := func(level string) bool {
+		for _, allowed := range levels {
+			if allowed == level {
+				return true
+			}
+		}
+		return false
+	}
+	xhigh := apiCapabilitySupport{Supported: has("xhigh")}
+
+	return &apiModelCapabilities{
+		Effort: apiEffortCapability{
+			High:      apiCapabilitySupport{Supported: has("high")},
+			Low:       apiCapabilitySupport{Supported: has("low")},
+			Max:       apiCapabilitySupport{Supported: has("max")},
+			Medium:    apiCapabilitySupport{Supported: has("medium")},
+			Supported: true,
+			XHigh:     &xhigh,
+		},
+		ImageInput: apiCapabilitySupport{Supported: supportsInputType(m, "IMAGE")},
+		// Leave thinking disabled here deliberately. Effort is independently
+		// supported by the Messages API, and advertising a thinking mode would
+		// make Desktop send a control the Kiro wire adapter does not currently
+		// preserve verbatim.
+		Thinking: apiThinkingCapability{
+			Supported: false,
+			Types: apiThinkingTypes{
+				Adaptive: apiCapabilitySupport{Supported: false},
+				Enabled:  apiCapabilitySupport{Supported: false},
+			},
+		},
+	}
 }
 
 // RenderModelsAPI renders the live Kiro model list as an Anthropic Models API
@@ -620,6 +753,8 @@ func RenderModelsAPI(list []KiroModel) string {
 		out.Data = append(out.Data, apiModel{
 			Type:           "model",
 			ID:             m.ModelID,
+			Capabilities:   modelCapabilities(m),
+			CreatedAt:      "1970-01-01T00:00:00Z",
 			DisplayName:    name,
 			MaxInputTokens: m.TokenLimits.MaxInputTokens,
 			MaxTokens:      m.TokenLimits.MaxOutputTokens,
