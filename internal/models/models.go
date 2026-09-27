@@ -740,9 +740,10 @@ func modelCapabilities(m KiroModel) *apiModelCapabilities {
 // model IDs are returned unchanged.
 //
 // Examples:
-//   claude-opus-5.5   -> claude-opus-5-5
-//   claude-opus-4.8   -> claude-opus-4-8
-//   claude-sonnet-5   -> claude-sonnet-5
+//
+//	claude-opus-5.5   -> claude-opus-5-5
+//	claude-opus-4.8   -> claude-opus-4-8
+//	claude-sonnet-5   -> claude-sonnet-5
 //
 // getKiroModelID performs the reverse normalization on the request path, so this
 // is a presentation-only transformation for model discovery.
