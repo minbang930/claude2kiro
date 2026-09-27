@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	repo          = "sgeraldes/claude2kiro"
+	repo          = "minbang930/claude2kiro"
 	checkInterval = 1 * time.Hour // Don't check more than once per hour
 	keepVersions  = 2             // Keep last N versions, delete older
 )
