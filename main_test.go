@@ -30,6 +30,9 @@ func mk(id string) models.KiroModel {
 func stubList() []models.KiroModel {
 	return []models.KiroModel{
 		mk("auto"),
+		mk("claude-opus-5.5"),
+		mk("claude-opus-5"),
+		mk("claude-sonnet-5"),
 		mk("claude-opus-4.8"),
 		mk("claude-opus-4.7"),
 		mk("claude-opus-4.6"),
@@ -52,6 +55,9 @@ func TestGetKiroModelID(t *testing.T) {
 		want string
 	}{
 		// 1. Static map exact match.
+		{"desktop canonical opus 5.5", "claude-opus-5-5", "claude-opus-5.5"},
+		{"desktop canonical opus 5", "claude-opus-5", "claude-opus-5"},
+		{"desktop canonical sonnet 5", "claude-sonnet-5", "claude-sonnet-5"},
 		{"static opus 4.8 dash", "claude-opus-4-8", "claude-opus-4.8"},
 		{"static opus 4.8 dot", "claude-opus-4.8", "claude-opus-4.8"},
 		{"static opus 4.7", "claude-opus-4-7", "claude-opus-4.7"},

@@ -348,6 +348,45 @@ func TestEffortLevels(t *testing.T) {
 	}
 }
 
+func TestDesktopModelID(t *testing.T) {
+	cases := map[string]string{
+		"claude-opus-5.5":   "claude-opus-5-5",
+		"claude-opus-5":     "claude-opus-5",
+		"claude-sonnet-5":   "claude-sonnet-5",
+		"claude-opus-4.8":   "claude-opus-4-8",
+		"claude-sonnet-4.6": "claude-sonnet-4-6",
+		"claude-haiku-4.5":  "claude-haiku-4-5",
+		"glm-5":             "glm-5",
+	}
+	for in, want := range cases {
+		if got := DesktopModelID(in); got != want {
+			t.Errorf("DesktopModelID(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestFamilyDefaults(t *testing.T) {
+	list := []KiroModel{
+		{ModelID: "claude-opus-4.8"},
+		{ModelID: "claude-opus-5"},
+		{ModelID: "claude-opus-5.5"},
+		{ModelID: "claude-sonnet-4.6"},
+		{ModelID: "claude-sonnet-5"},
+		{ModelID: "claude-haiku-4.5"},
+	}
+	got := familyDefaults(list)
+	for _, i := range []int{2, 4, 5} {
+		if !got[i] {
+			t.Errorf("family default index %d missing: %v", i, got)
+		}
+	}
+	for _, i := range []int{0, 1, 3} {
+		if got[i] {
+			t.Errorf("older family model index %d incorrectly marked default", i)
+		}
+	}
+}
+
 func TestRenderModelsAPI(t *testing.T) {
 	var opus KiroModel
 	opus.ModelID = "claude-opus-5.5"
@@ -372,8 +411,15 @@ func TestRenderModelsAPI(t *testing.T) {
 	if parsed.Data[0].Type != "model" {
 		t.Errorf("Data[0].Type = %q, want %q", parsed.Data[0].Type, "model")
 	}
-	if parsed.Data[0].ID != "claude-opus-5.5" {
-		t.Errorf("Data[0].ID = %q, want the exact Kiro backend ID", parsed.Data[0].ID)
+	if parsed.Data[0].ID != "claude-opus-5-5" {
+		t.Errorf("Data[0].ID = %q, want canonical Claude Desktop ID", parsed.Data[0].ID)
+	}
+	if parsed.Data[0].AnthropicFamilyTier != "opus" || !parsed.Data[0].IsFamilyDefault {
+		t.Errorf("Data[0] family metadata = tier:%q default:%v, want opus/true",
+			parsed.Data[0].AnthropicFamilyTier, parsed.Data[0].IsFamilyDefault)
+	}
+	if !parsed.Data[0].Supports1M {
+		t.Error("1M token limit should advertise supports_1m")
 	}
 	if parsed.Data[0].CreatedAt == "" {
 		t.Error("Data[0].CreatedAt is empty; current Models API requires an RFC3339 value")
@@ -409,11 +455,11 @@ func TestRenderModelsAPI(t *testing.T) {
 	if parsed.HasMore {
 		t.Error("HasMore = true, want false (no pagination)")
 	}
-	if parsed.FirstID == nil || *parsed.FirstID != "claude-opus-5.5" {
-		t.Errorf("FirstID = %v, want claude-opus-5.5", parsed.FirstID)
+	if parsed.FirstID == nil || *parsed.FirstID != "claude-opus-5-5" {
+		t.Errorf("FirstID = %v, want claude-opus-5-5", parsed.FirstID)
 	}
-	if parsed.LastID == nil || *parsed.LastID != "claude-haiku-4.5" {
-		t.Errorf("LastID = %v, want claude-haiku-4.5", parsed.LastID)
+	if parsed.LastID == nil || *parsed.LastID != "claude-haiku-4-5" {
+		t.Errorf("LastID = %v, want claude-haiku-4-5", parsed.LastID)
 	}
 	if parsed.Data[1].Capabilities != nil {
 		t.Errorf("Haiku 4.5 should not advertise effort capabilities: %+v", parsed.Data[1].Capabilities)

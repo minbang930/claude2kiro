@@ -666,13 +666,16 @@ type apiModelCapabilities struct {
 }
 
 type apiModel struct {
-	Type           string                `json:"type"`
-	ID             string                `json:"id"`
-	Capabilities   *apiModelCapabilities `json:"capabilities"`
-	CreatedAt      string                `json:"created_at"`
-	DisplayName    string                `json:"display_name"`
-	MaxInputTokens int                   `json:"max_input_tokens,omitempty"`
-	MaxTokens      int                   `json:"max_tokens,omitempty"`
+	Type                string                `json:"type"`
+	ID                  string                `json:"id"`
+	Capabilities        *apiModelCapabilities `json:"capabilities"`
+	CreatedAt           string                `json:"created_at"`
+	DisplayName         string                `json:"display_name"`
+	MaxInputTokens      int                   `json:"max_input_tokens,omitempty"`
+	MaxTokens           int                   `json:"max_tokens,omitempty"`
+	AnthropicFamilyTier string                `json:"anthropic_family_tier,omitempty"`
+	IsFamilyDefault     bool                  `json:"is_family_default,omitempty"`
+	Supports1M          bool                  `json:"supports_1m,omitempty"`
 }
 
 // apiModelList is the Anthropic Models API list envelope.
@@ -732,6 +735,65 @@ func modelCapabilities(m KiroModel) *apiModelCapabilities {
 	}
 }
 
+// DesktopModelID converts Kiro's dotted Claude IDs to the canonical Claude API
+// aliases that Claude Desktop's built-in model catalog recognizes. Non-Claude
+// model IDs are returned unchanged.
+//
+// Examples:
+//
+//	claude-opus-5.5   -> claude-opus-5-5
+//	claude-opus-4.8   -> claude-opus-4-8
+//	claude-sonnet-5   -> claude-sonnet-5
+//
+// getKiroModelID performs the reverse normalization on the request path, so this
+// is a presentation-only transformation for model discovery.
+func DesktopModelID(modelID string) string {
+	s := strings.ToLower(strings.TrimSpace(modelID))
+	m := claudeVerRe.FindStringSubmatch(s)
+	if m == nil {
+		return modelID
+	}
+	family, major, minor := m[1], m[2], m[3]
+	if minor == "" || minor == "0" {
+		return fmt.Sprintf("claude-%s-%s", family, major)
+	}
+	return fmt.Sprintf("claude-%s-%s-%s", family, major, minor)
+}
+
+func anthropicFamilyTier(modelID string) string {
+	s := strings.ToLower(strings.TrimSpace(modelID))
+	for _, tier := range []string{"opus", "sonnet", "haiku", "fable", "mythos"} {
+		if strings.Contains(s, "claude-"+tier+"-") {
+			return tier
+		}
+	}
+	return ""
+}
+
+// familyDefaults returns the index of the highest-version Claude model in each
+// family. Claude Desktop uses is_family_default to resolve its bare tier aliases
+// and to keep newer discovered models visible in the standard picker.
+func familyDefaults(list []KiroModel) map[int]bool {
+	bestIndex := map[string]int{}
+	bestScore := map[string]float64{}
+	for i, m := range list {
+		tier := anthropicFamilyTier(m.ModelID)
+		if tier == "" {
+			continue
+		}
+		score := versionScore(m.ModelID)
+		if prev, ok := bestScore[tier]; !ok || score > prev {
+			bestScore[tier] = score
+			bestIndex[tier] = i
+		}
+	}
+	out := make(map[int]bool, len(bestIndex))
+	for _, i := range bestIndex {
+		out[i] = true
+	}
+	return out
+}
+
 // RenderModelsAPI renders the live Kiro model list as an Anthropic Models API
 // (GET /v1/models) JSON response. Each entry's `id` is the Kiro model ID the
 // CodeWhisperer backend accepts (e.g. "claude-opus-4.8"), so a model the picker
@@ -742,7 +804,8 @@ func modelCapabilities(m KiroModel) *apiModelCapabilities {
 // must be the exact backend ID, not a friendly alias.
 func RenderModelsAPI(list []KiroModel) string {
 	out := apiModelList{Data: make([]apiModel, 0, len(list))}
-	for _, m := range list {
+	defaults := familyDefaults(list)
+	for i, m := range list {
 		name := m.ModelName
 		if name == "" {
 			name = m.ModelID
@@ -751,13 +814,16 @@ func RenderModelsAPI(list []KiroModel) string {
 			name += " (preview)"
 		}
 		out.Data = append(out.Data, apiModel{
-			Type:           "model",
-			ID:             m.ModelID,
-			Capabilities:   modelCapabilities(m),
-			CreatedAt:      "1970-01-01T00:00:00Z",
-			DisplayName:    name,
-			MaxInputTokens: m.TokenLimits.MaxInputTokens,
-			MaxTokens:      m.TokenLimits.MaxOutputTokens,
+			Type:                "model",
+			ID:                  DesktopModelID(m.ModelID),
+			Capabilities:        modelCapabilities(m),
+			CreatedAt:           "1970-01-01T00:00:00Z",
+			DisplayName:         name,
+			MaxInputTokens:      m.TokenLimits.MaxInputTokens,
+			MaxTokens:           m.TokenLimits.MaxOutputTokens,
+			AnthropicFamilyTier: anthropicFamilyTier(m.ModelID),
+			IsFamilyDefault:     defaults[i],
+			Supports1M:          m.TokenLimits.MaxInputTokens >= 1000000,
 		})
 	}
 	if len(out.Data) > 0 {
