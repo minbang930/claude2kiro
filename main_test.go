@@ -99,7 +99,7 @@ func TestResolveNativeEffort(t *testing.T) {
 		{"sonnet 5 low", "claude-sonnet-5", "low", "low"},
 		{"opus 4.8 xhigh", "claude-opus-4.8", "xhigh", "xhigh"},
 		{"sonnet 4.6 max", "claude-sonnet-4.6", "max", "max"},
-		{"sonnet 4.6 xhigh caps down", "claude-sonnet-4.6", "xhigh", "high"},
+		{"sonnet 4.6 xhigh keeps existing clamp", "claude-sonnet-4.6", "xhigh", "max"},
 		{"haiku has no effort", "claude-haiku-4.5", "high", ""},
 		{"unknown effort rejected", "claude-opus-5.5", "ultra", ""},
 	}
