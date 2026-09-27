@@ -5733,14 +5733,19 @@ func loginSocial(provider string) {
 		os.Exit(1)
 	}
 
-	// Find available port and start local callback server
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	// Kiro's current web sign-in portal expects a localhost base URI, while
+	// the actual OAuth callback is delivered to /oauth/callback. Keep these
+	// as separate values; using the callback URL as the portal redirect_uri
+	// causes Cognito redirect_mismatch errors.
+	listener, err := net.Listen("tcp4", "127.0.0.1:3128")
 	if err != nil {
-		fmt.Printf("Failed to start callback server: %v\n", err)
+		fmt.Printf("Failed to start callback server on port 3128: %v\n", err)
+		fmt.Println("Close Kiro or any app using port 3128, then try again.")
 		os.Exit(1)
 	}
 	port := listener.Addr().(*net.TCPAddr).Port
-	redirectUri := fmt.Sprintf("http://localhost:%d/oauth/callback", port)
+	redirectBaseUri := fmt.Sprintf("http://localhost:%d", port)
+	callbackRedirectUri := fmt.Sprintf("%s/oauth/callback?login_option=%s", redirectBaseUri, strings.ToLower(provider))
 
 	fmt.Printf("Callback server started on port %d\n", port)
 
@@ -5781,33 +5786,10 @@ func loginSocial(provider string) {
 			return
 		}
 
-		// Send success response to browser
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`
-			<!DOCTYPE html>
-			<html>
-			<head>
-				<meta charset="UTF-8">
-				<title>Login Successful</title>
-				<style>
-					body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-						   display: flex; justify-content: center; align-items: center;
-						   height: 100vh; margin: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-					.container { text-align: center; background: white; padding: 40px 60px;
-								 border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
-					h1 { color: #333; margin-bottom: 10px; }
-					p { color: #666; }
-				</style>
-			</head>
-			<body>
-				<div class="container">
-					<h1>✓ Login Successful!</h1>
-					<p>You can close this window and return to the terminal.</p>
-				</div>
-			</body>
-			</html>
-		`))
+		// Match Kiro's current CLI/IDE flow: after capturing the local callback,
+		// send the browser back to the Kiro portal's success page.
+		w.Header().Set("Location", "https://app.kiro.dev/signin?auth_status=success&redirect_from=kirocli")
+		w.WriteHeader(http.StatusFound)
 
 		deliver(code)
 	})
@@ -5819,10 +5801,10 @@ func loginSocial(provider string) {
 		}
 	}()
 
-	// Build login URL
-	loginUrl := fmt.Sprintf("https://app.kiro.dev/signin?idp=%s&redirect_uri=%s&code_challenge=%s&code_challenge_method=S256&state=%s&redirect_from=kirocli",
-		provider,
-		url.QueryEscape(redirectUri),
+	// Build the portal URL. Provider selection happens on app.kiro.dev;
+	// the portal receives only the localhost base URI.
+	loginUrl := fmt.Sprintf("https://app.kiro.dev/signin?redirect_uri=%s&code_challenge=%s&code_challenge_method=S256&state=%s&redirect_from=kirocli",
+		url.QueryEscape(redirectBaseUri),
 		codeChallenge,
 		state,
 	)
@@ -5849,7 +5831,7 @@ func loginSocial(provider string) {
 		fmt.Println("Authorization code received, exchanging for tokens...")
 
 		// Exchange code for tokens
-		token, err := exchangeCodeForTokens(code, codeVerifier, redirectUri, provider)
+		token, err := exchangeCodeForTokens(code, codeVerifier, callbackRedirectUri, provider)
 		if err != nil {
 			fmt.Printf("Failed to exchange code for tokens: %v\n", err)
 			os.Exit(1)
