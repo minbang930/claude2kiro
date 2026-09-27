@@ -319,18 +319,48 @@ func TestListModelsURL(t *testing.T) {
 	}
 }
 
+func TestEffortLevels(t *testing.T) {
+	cases := []struct {
+		model string
+		want  []string
+	}{
+		{"claude-opus-5.5", []string{"low", "medium", "high", "xhigh", "max"}},
+		{"claude-opus-5", []string{"low", "medium", "high", "xhigh", "max"}},
+		{"claude-sonnet-5", []string{"low", "medium", "high", "xhigh", "max"}},
+		{"claude-opus-4.6", []string{"low", "medium", "high", "max"}},
+		{"claude-opus-4.5", []string{"low", "medium", "high"}},
+		{"claude-haiku-4.5", nil},
+	}
+	for _, tc := range cases {
+		got := EffortLevels(tc.model)
+		if fmt.Sprint(got) != fmt.Sprint(tc.want) {
+			t.Errorf("EffortLevels(%q) = %v, want %v", tc.model, got, tc.want)
+		}
+	}
+	if got := DefaultEffort("claude-opus-5.5"); got != "medium" {
+		t.Errorf("DefaultEffort(Opus 5.5) = %q, want medium", got)
+	}
+	if got := DefaultEffort("claude-sonnet-5"); got != "high" {
+		t.Errorf("DefaultEffort(Sonnet 5) = %q, want high", got)
+	}
+	if got := DefaultEffort("claude-haiku-4.5"); got != "" {
+		t.Errorf("DefaultEffort(Haiku 4.5) = %q, want empty", got)
+	}
+}
+
 func TestRenderModelsAPI(t *testing.T) {
 	var opus KiroModel
-	opus.ModelID = "claude-opus-4.8"
-	opus.ModelName = "Claude Opus 4.8"
+	opus.ModelID = "claude-opus-5.5"
+	opus.ModelName = "Claude Opus 5.5"
 	opus.Description = "experimental preview"
+	opus.SupportedInputTypes = []string{"TEXT", "IMAGE"}
 	opus.TokenLimits.MaxInputTokens = 1000000
 	opus.TokenLimits.MaxOutputTokens = 128000
-	var sonnet KiroModel
-	sonnet.ModelID = "claude-sonnet-4.6"
-	sonnet.ModelName = "Claude Sonnet 4.6"
+	var haiku KiroModel
+	haiku.ModelID = "claude-haiku-4.5"
+	haiku.ModelName = "Claude Haiku 4.5"
 
-	out := RenderModelsAPI([]KiroModel{opus, sonnet})
+	out := RenderModelsAPI([]KiroModel{opus, haiku})
 
 	var parsed apiModelList
 	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
@@ -342,8 +372,22 @@ func TestRenderModelsAPI(t *testing.T) {
 	if parsed.Data[0].Type != "model" {
 		t.Errorf("Data[0].Type = %q, want %q", parsed.Data[0].Type, "model")
 	}
-	if parsed.Data[0].ID != "claude-opus-4.8" {
+	if parsed.Data[0].ID != "claude-opus-5.5" {
 		t.Errorf("Data[0].ID = %q, want the exact Kiro backend ID", parsed.Data[0].ID)
+	}
+	if parsed.Data[0].CreatedAt == "" {
+		t.Error("Data[0].CreatedAt is empty; current Models API requires an RFC3339 value")
+	}
+	caps := parsed.Data[0].Capabilities
+	if caps == nil || !caps.Effort.Supported {
+		t.Fatalf("Data[0] effort capabilities missing: %+v", caps)
+	}
+	if !caps.Effort.Low.Supported || !caps.Effort.Medium.Supported || !caps.Effort.High.Supported ||
+		caps.Effort.XHigh == nil || !caps.Effort.XHigh.Supported || !caps.Effort.Max.Supported {
+		t.Errorf("Opus 5.5 should advertise all five effort levels: %+v", caps.Effort)
+	}
+	if !caps.ImageInput.Supported {
+		t.Error("IMAGE in Kiro supportedInputTypes should advertise image_input support")
 	}
 	// Context window must be carried through so Claude Desktop shows the real
 	// 1M window instead of its 200K default.
@@ -365,11 +409,14 @@ func TestRenderModelsAPI(t *testing.T) {
 	if parsed.HasMore {
 		t.Error("HasMore = true, want false (no pagination)")
 	}
-	if parsed.FirstID == nil || *parsed.FirstID != "claude-opus-4.8" {
-		t.Errorf("FirstID = %v, want claude-opus-4.8", parsed.FirstID)
+	if parsed.FirstID == nil || *parsed.FirstID != "claude-opus-5.5" {
+		t.Errorf("FirstID = %v, want claude-opus-5.5", parsed.FirstID)
 	}
-	if parsed.LastID == nil || *parsed.LastID != "claude-sonnet-4.6" {
-		t.Errorf("LastID = %v, want claude-sonnet-4.6", parsed.LastID)
+	if parsed.LastID == nil || *parsed.LastID != "claude-haiku-4.5" {
+		t.Errorf("LastID = %v, want claude-haiku-4.5", parsed.LastID)
+	}
+	if parsed.Data[1].Capabilities != nil {
+		t.Errorf("Haiku 4.5 should not advertise effort capabilities: %+v", parsed.Data[1].Capabilities)
 	}
 
 	// The omitted field must genuinely be absent from the JSON, not serialized
