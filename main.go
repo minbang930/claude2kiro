@@ -1342,20 +1342,8 @@ func resolveNativeEffort(kiroModel string, anthropicReq AnthropicRequest) string
 		return requested
 	}
 
-	// Never silently raise effort when the requested level is unsupported.
-	// Choose the highest supported level below the request instead. For
-	// example, xhigh on Sonnet 4.6 becomes high rather than max.
-	best := ""
-	bestRank := -1
-	for _, candidate := range allowed {
-		rank, ok := nativeEffortRank[candidate]
-		if !ok || rank > requestedRank || rank <= bestRank {
-			continue
-		}
-		best = candidate
-		bestRank = rank
-	}
-	return best
+	_ = requestedRank
+	return allowed[len(allowed)-1]
 }
 
 func isThinkingEnabled(anthropicReq AnthropicRequest) bool {
