@@ -5740,7 +5740,7 @@ func loginSocial(provider string) {
 		os.Exit(1)
 	}
 	port := listener.Addr().(*net.TCPAddr).Port
-	redirectUri := fmt.Sprintf("http://127.0.0.1:%d/oauth/callback", port)
+	redirectUri := fmt.Sprintf("http://localhost:%d/oauth/callback", port)
 
 	fmt.Printf("Callback server started on port %d\n", port)
 
@@ -5820,8 +5820,7 @@ func loginSocial(provider string) {
 	}()
 
 	// Build login URL
-	loginUrl := fmt.Sprintf("%s/login?idp=%s&redirect_uri=%s&code_challenge=%s&code_challenge_method=S256&state=%s",
-		kiroAuthEndpoint,
+	loginUrl := fmt.Sprintf("https://app.kiro.dev/signin?idp=%s&redirect_uri=%s&code_challenge=%s&code_challenge_method=S256&state=%s&redirect_from=kirocli",
 		provider,
 		url.QueryEscape(redirectUri),
 		codeChallenge,
