@@ -1831,8 +1831,8 @@ var (
 )
 
 var (
-	normalizeSystemRoleMu       sync.Mutex
-	ordinaryOpusSystemRole      string
+	normalizeSystemRoleMu  sync.Mutex
+	ordinaryOpusSystemRole string
 )
 
 func scalarSystemRoleIndex(messages []AnthropicRequestMessage) int {
