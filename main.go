@@ -2016,7 +2016,7 @@ func buildCodeWhispererRequest(anthropicReq AnthropicRequest, token TokenData) C
 	// but only that request is sent to Kiro with modelId "auto".
 	if strings.EqualFold(anthropicReq.Model, "claude-opus-5-5") ||
 		strings.EqualFold(anthropicReq.Model, "claude-opus-5.5") {
-		kiroModel = "auto"
+		kiroModel = "claude-haiku-4.5"
 	}
 	historyMode := cfg.Advanced.HistoryMode
 	if historyMode == "" {
