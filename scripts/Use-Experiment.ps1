@@ -28,10 +28,10 @@ function Get-RepoRoot {
     return $root.Trim()
 }
 
-function Invoke-Git([string[]]$Args) {
-    & git @Args
+function Invoke-Git([string[]]$GitArgs) {
+    & git @GitArgs
     if ($LASTEXITCODE -ne 0) {
-        throw "git failed: git $($Args -join ' ')"
+        throw "git failed: git $($GitArgs -join ' ')"
     }
 }
 
