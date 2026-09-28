@@ -358,6 +358,65 @@ func TestBuildCodeWhispererRequestHistoryModeCurrentOnly(t *testing.T) {
 	}
 }
 
+func TestBuildCodeWhispererRequestTrailingSystemKeepsUserAsCurrent(t *testing.T) {
+	cfg := config.Default()
+	withConfig(t, cfg)
+
+	req := AnthropicRequest{
+		Model:     "claude-sonnet-4-20250514",
+		MaxTokens: 64,
+		Messages: []AnthropicRequestMessage{
+			{Role: "user", Content: "CLAUDE_SYSTEM_PROBE_928"},
+			{Role: "system", Content: "SessionStart:startup hook success"},
+		},
+	}
+
+	cw := buildCodeWhispererRequest(req, TokenData{})
+	want := "CLAUDE_SYSTEM_PROBE_928\n\n<system-reminder>\nSessionStart:startup hook success\n</system-reminder>"
+	if got := cw.ConversationState.CurrentMessage.UserInputMessage.Content; got != want {
+		t.Fatalf("current content = %q, want %q", got, want)
+	}
+	if got := len(cw.ConversationState.History); got != 0 {
+		t.Fatalf("history length = %d, want 0; trailing system turn must not replace or duplicate the current user turn", got)
+	}
+}
+
+func TestBuildCodeWhispererRequestTrailingSystemKeepsCurrentToolResults(t *testing.T) {
+	cfg := config.Default()
+	withConfig(t, cfg)
+
+	req := AnthropicRequest{
+		Model:     "claude-sonnet-4-20250514",
+		MaxTokens: 64,
+		Messages: []AnthropicRequestMessage{
+			{Role: "user", Content: "run a command"},
+			{Role: "assistant", Content: []any{map[string]any{
+				"type":  "tool_use",
+				"id":    "tooluse_1",
+				"name":  "Bash",
+				"input": map[string]any{"command": "echo ok"},
+			}}},
+			{Role: "user", Content: []any{map[string]any{
+				"type":        "tool_result",
+				"tool_use_id": "tooluse_1",
+				"content":     "ok",
+			}}},
+			{Role: "system", Content: "post-user hook instruction"},
+		},
+	}
+
+	cw := buildCodeWhispererRequest(req, TokenData{})
+	if got := cw.ConversationState.CurrentMessage.UserInputMessage.UserInputMessageContext.ToolResults; len(got) != 1 {
+		t.Fatalf("current toolResults length = %d, want 1", len(got))
+	}
+	if got := cw.ConversationState.CurrentMessage.UserInputMessage.Content; !strings.Contains(got, "<system-reminder>\npost-user hook instruction\n</system-reminder>") {
+		t.Fatalf("current content did not preserve trailing system instruction: %q", got)
+	}
+	if got := len(cw.ConversationState.History); got != 2 {
+		t.Fatalf("history length = %d, want prior user/assistant tool-use pair only", got)
+	}
+}
+
 func TestBuildCodeWhispererRequestHistoryModeRecentKeepsSystemPrompt(t *testing.T) {
 	cfg := config.Default()
 	cfg.Advanced.HistoryMode = "recent"
