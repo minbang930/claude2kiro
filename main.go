@@ -4512,6 +4512,7 @@ func handleStreamRequestWithLogger(w http.ResponseWriter, anthropicReq Anthropic
 
 	// Build CodeWhisperer request
 	cwReq := buildCodeWhispererRequest(anthropicReq, token)
+	lg.LogInfo(fmt.Sprintf("Model route: incoming=%s sent=%s", anthropicReq.Model, cwReq.ConversationState.CurrentMessage.UserInputMessage.ModelId))
 
 	// Keep the stable conversationId concurrency-safe: parallel Task subagents
 	// share the parent session id, so without this they'd all hit the backend on
@@ -7202,6 +7203,9 @@ func handleNonStreamRequest(w http.ResponseWriter, anthropicReq AnthropicRequest
 
 	// Build CodeWhisperer request
 	cwReq := buildCodeWhispererRequest(anthropicReq, token)
+	if lg != nil {
+		lg.LogInfo(fmt.Sprintf("Model route: incoming=%s sent=%s", anthropicReq.Model, cwReq.ConversationState.CurrentMessage.UserInputMessage.ModelId))
+	}
 
 	// Concurrency-safe stable conversationId (see claimStableConversation). Must
 	// run before marshaling the body below.
