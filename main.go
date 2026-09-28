@@ -1825,6 +1825,51 @@ func textComponentFingerprint(value string) string {
 	return fmt.Sprintf("%s/%d", hex.EncodeToString(sum[:8]), len(value))
 }
 
+func messageBlockSummary(messages []AnthropicRequestMessage) string {
+	var messageParts []string
+	for i, msg := range messages {
+		contentText := getMessageContent(msg.Content)
+		blockSummary := "scalar"
+		if blocks, ok := msg.Content.([]any); ok {
+			var blockParts []string
+			for j, block := range blocks {
+				blockType := "unknown"
+				blockText := ""
+				if m, ok := block.(map[string]any); ok {
+					if t, ok := m["type"].(string); ok && t != "" {
+						blockType = t
+					}
+					switch blockType {
+					case "text":
+						if textValue, ok := m["text"].(string); ok {
+							blockText = textValue
+						}
+					case "tool_result":
+						blockText = toolResultText(m["content"])
+					}
+				}
+				blockParts = append(blockParts, fmt.Sprintf(
+					"%d:%s:%s:text=%s",
+					j,
+					blockType,
+					componentFingerprint(block),
+					textComponentFingerprint(blockText),
+				))
+			}
+			blockSummary = "[" + strings.Join(blockParts, ",") + "]"
+		}
+		messageParts = append(messageParts, fmt.Sprintf(
+			"m%d role=%s content=%s text=%s blocks=%s",
+			i,
+			msg.Role,
+			componentFingerprint(msg.Content),
+			textComponentFingerprint(contentText),
+			blockSummary,
+		))
+	}
+	return "Message blocks: " + strings.Join(messageParts, " | ")
+}
+
 func requestComponentSummary(anthropicReq AnthropicRequest, cwReq CodeWhispererRequest) string {
 	current := cwReq.ConversationState.CurrentMessage.UserInputMessage
 	controls := struct {
@@ -4650,6 +4695,7 @@ func handleStreamRequestWithLogger(w http.ResponseWriter, anthropicReq Anthropic
 	// Log request metrics for benchmark comparisons.
 	lg.LogInfo(requestMetricsSummary(cwReq, len(cwReqBody), cfg))
 	lg.LogInfo(fmt.Sprintf("%s [%s:%s]", requestComponentSummary(anthropicReq, cwReq), sessionID, requestID))
+	lg.LogInfo(fmt.Sprintf("%s [%s:%s]", messageBlockSummary(anthropicReq.Messages), sessionID, requestID))
 	if fingerprint := requestWireFingerprint(cwReq); fingerprint != "" {
 		lg.LogInfo(fmt.Sprintf("Request wire fingerprint: [%s:%s] %s (ignores modelId,conversationId)", sessionID, requestID, fingerprint))
 	}
@@ -7357,6 +7403,7 @@ func handleNonStreamRequest(w http.ResponseWriter, anthropicReq AnthropicRequest
 	if lg != nil {
 		lg.LogInfo(requestMetricsSummary(cwReq, len(cwReqBody), config.Get()))
 		lg.LogInfo(fmt.Sprintf("%s [%s:%s]", requestComponentSummary(anthropicReq, cwReq), sessionID, requestID))
+		lg.LogInfo(fmt.Sprintf("%s [%s:%s]", messageBlockSummary(anthropicReq.Messages), sessionID, requestID))
 		if fingerprint := requestWireFingerprint(cwReq); fingerprint != "" {
 			lg.LogInfo(fmt.Sprintf("Request wire fingerprint: [%s:%s] %s (ignores modelId,conversationId)", sessionID, requestID, fingerprint))
 		}
