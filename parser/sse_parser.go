@@ -80,6 +80,111 @@ type MeteringEvent struct {
 // valid response frame without logging field values. This is experiment
 // observability only: it lets us compare response shapes without exposing
 // generated content or changing request behavior.
+// SummarizeResponseFrameHeaders returns selected AWS event-stream header
+// metadata for each frame. It logs header names and string values only; response
+// payload values are not inspected here.
+func SummarizeResponseFrameHeaders(resp []byte) []string {
+	var summaries []string
+	r := bytes.NewReader(resp)
+	frameIndex := 0
+	for {
+		if r.Len() < 12 {
+			break
+		}
+		var totalLen, headerLen uint32
+		if err := binary.Read(r, binary.BigEndian, &totalLen); err != nil {
+			break
+		}
+		if err := binary.Read(r, binary.BigEndian, &headerLen); err != nil {
+			break
+		}
+		if totalLen < headerLen+12 || int(totalLen) > r.Len()+8 {
+			break
+		}
+		header := make([]byte, headerLen)
+		if _, err := io.ReadFull(r, header); err != nil {
+			break
+		}
+		payloadLen := int(totalLen) - int(headerLen) - 12
+		if _, err := r.Seek(int64(payloadLen+4), io.SeekCurrent); err != nil {
+			break
+		}
+
+		if parts := summarizeEventStreamHeaderBlock(header); len(parts) > 0 {
+			summaries = append(summaries, "#"+strconv.Itoa(frameIndex)+"{"+strings.Join(parts, ",")+"}")
+		}
+		frameIndex++
+	}
+	return summaries
+}
+
+func summarizeEventStreamHeaderBlock(header []byte) []string {
+	var parts []string
+	r := bytes.NewReader(header)
+	for r.Len() > 0 {
+		nameLen, err := r.ReadByte()
+		if err != nil || int(nameLen) > r.Len() {
+			break
+		}
+		name := make([]byte, int(nameLen))
+		if _, err := io.ReadFull(r, name); err != nil {
+			break
+		}
+		typeCode, err := r.ReadByte()
+		if err != nil {
+			break
+		}
+
+		var value string
+		switch typeCode {
+		case 0:
+			value = "true"
+		case 1:
+			value = "false"
+		case 2:
+			if r.Len() < 1 { return parts }
+			r.Seek(1, io.SeekCurrent)
+			value = "<byte>"
+		case 3:
+			if r.Len() < 2 { return parts }
+			r.Seek(2, io.SeekCurrent)
+			value = "<int16>"
+		case 4:
+			if r.Len() < 4 { return parts }
+			r.Seek(4, io.SeekCurrent)
+			value = "<int32>"
+		case 5, 8:
+			if r.Len() < 8 { return parts }
+			r.Seek(8, io.SeekCurrent)
+			if typeCode == 5 { value = "<int64>" } else { value = "<timestamp>" }
+		case 6, 7:
+			if r.Len() < 2 { return parts }
+			var n uint16
+			if err := binary.Read(r, binary.BigEndian, &n); err != nil || int(n) > r.Len() {
+				return parts
+			}
+			b := make([]byte, int(n))
+			if _, err := io.ReadFull(r, b); err != nil {
+				return parts
+			}
+			if typeCode == 7 {
+				value = string(b)
+			} else {
+				value = "<bytes:" + strconv.Itoa(int(n)) + ">"
+			}
+		case 9:
+			if r.Len() < 16 { return parts }
+			r.Seek(16, io.SeekCurrent)
+			value = "<uuid>"
+		default:
+			return parts
+		}
+		parts = append(parts, string(name)+"="+value)
+	}
+	sort.Strings(parts)
+	return parts
+}
+
 func SummarizeResponseFrameFields(resp []byte) []string {
 	var summaries []string
 	r := bytes.NewReader(resp)
