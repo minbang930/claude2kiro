@@ -2092,6 +2092,12 @@ func buildCodeWhispererRequest(anthropicReq AnthropicRequest, token TokenData) C
 	} else {
 		cwReq.ConversationState.ConversationId = generateUUID()
 	}
+	// Experiment: hold the backend conversation key constant while preserving
+	// the existing Opus 5 -> Opus 5.5 low-effort request construction.
+	if strings.EqualFold(anthropicReq.Model, "claude-opus-5") &&
+		strings.EqualFold(kiroModel, "claude-opus-5.5") {
+		cwReq.ConversationState.ConversationId = stableConversationID("runtime-precedence-fixed-conversation")
+	}
 	if effort := resolveNativeEffort(kiroModel, anthropicReq); effort != "" {
 		cwReq.AdditionalModelRequestFields = &AdditionalModelRequestFields{
 			OutputConfig: &OutputConfig{Effort: effort},
