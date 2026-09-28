@@ -179,3 +179,6 @@ Before proposing a new experiment:
 6. Update this ledger after a live result materially changes the conclusion.
 7. Do not resurrect experiments already falsified above without new evidence.
 8. Distinguish observed wire/request facts from inference about provider/server internals.
+
+
+PR #30 fixed-conversation retry note: the first live attempt overlapped Opus requests, so the concurrency guard replaced later fixed conversationIds with fresh UUIDs. Observed Opus convId prefixes were `93af8193`, `d124e1e5`, `094209d1`, and exact fingerprints differed. Treat this run as invalid for conversationId causality; repeat strictly sequentially, waiting for each Opus response to finish before starting the next fresh session.
