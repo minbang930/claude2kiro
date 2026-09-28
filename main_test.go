@@ -186,6 +186,25 @@ func TestComponentFingerprint(t *testing.T) {
 	}
 }
 
+func TestBackendResponseIdentitySummary(t *testing.T) {
+	header := http.Header{}
+	header.Set("X-Amzn-Codewhisperer-Conversation-Id", "conversation-a")
+	header.Set("X-Amzn-Requestid", "request-a")
+
+	summary := backendResponseIdentitySummary(header, "conversation-a")
+	if !strings.Contains(summary, "sameAsRequest=true") {
+		t.Fatalf("summary = %q, want sameAsRequest=true", summary)
+	}
+	if strings.Contains(summary, "conversation-a") || strings.Contains(summary, "request-a") {
+		t.Fatalf("summary should not expose raw identifiers: %q", summary)
+	}
+
+	summary = backendResponseIdentitySummary(header, "conversation-b")
+	if !strings.Contains(summary, "sameAsRequest=false") {
+		t.Fatalf("summary = %q, want sameAsRequest=false", summary)
+	}
+}
+
 func TestAccessTokenFingerprint(t *testing.T) {
 	if got := accessTokenFingerprint(""); got != "" {
 		t.Fatalf("empty token fingerprint = %q, want empty", got)
