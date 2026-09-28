@@ -72,14 +72,6 @@ type MeteringEvent struct {
 	Usage      float64 `json:"usage"`
 }
 
-// ParseResponseModelIDs returns distinct model IDs reported by assistantResponseEvent
-// frames in first-seen order. Kiro's "auto" routing can report the concrete
-// backend model here, which lets experiments distinguish routing metadata from
-// the model Claude Desktop requested.
-// SummarizeResponseFrameFields returns the top-level JSON field names for each
-// valid response frame without logging field values. This is experiment
-// observability only: it lets us compare response shapes without exposing
-// generated content or changing request behavior.
 // SummarizeResponseFrameHeaders returns selected AWS event-stream header
 // metadata for each frame. It logs header names and string values only; response
 // payload values are not inspected here.
@@ -142,23 +134,37 @@ func summarizeEventStreamHeaderBlock(header []byte) []string {
 		case 1:
 			value = "false"
 		case 2:
-			if r.Len() < 1 { return parts }
+			if r.Len() < 1 {
+				return parts
+			}
 			r.Seek(1, io.SeekCurrent)
 			value = "<byte>"
 		case 3:
-			if r.Len() < 2 { return parts }
+			if r.Len() < 2 {
+				return parts
+			}
 			r.Seek(2, io.SeekCurrent)
 			value = "<int16>"
 		case 4:
-			if r.Len() < 4 { return parts }
+			if r.Len() < 4 {
+				return parts
+			}
 			r.Seek(4, io.SeekCurrent)
 			value = "<int32>"
 		case 5, 8:
-			if r.Len() < 8 { return parts }
+			if r.Len() < 8 {
+				return parts
+			}
 			r.Seek(8, io.SeekCurrent)
-			if typeCode == 5 { value = "<int64>" } else { value = "<timestamp>" }
+			if typeCode == 5 {
+				value = "<int64>"
+			} else {
+				value = "<timestamp>"
+			}
 		case 6, 7:
-			if r.Len() < 2 { return parts }
+			if r.Len() < 2 {
+				return parts
+			}
 			var n uint16
 			if err := binary.Read(r, binary.BigEndian, &n); err != nil || int(n) > r.Len() {
 				return parts
@@ -173,7 +179,9 @@ func summarizeEventStreamHeaderBlock(header []byte) []string {
 				value = "<bytes:" + strconv.Itoa(int(n)) + ">"
 			}
 		case 9:
-			if r.Len() < 16 { return parts }
+			if r.Len() < 16 {
+				return parts
+			}
 			r.Seek(16, io.SeekCurrent)
 			value = "<uuid>"
 		default:
@@ -185,6 +193,10 @@ func summarizeEventStreamHeaderBlock(header []byte) []string {
 	return parts
 }
 
+// SummarizeResponseFrameFields returns the top-level JSON field names for each
+// valid response frame without logging field values. This is experiment
+// observability only: it lets us compare response shapes without exposing
+// generated content or changing request behavior.
 func SummarizeResponseFrameFields(resp []byte) []string {
 	var summaries []string
 	r := bytes.NewReader(resp)
@@ -231,6 +243,10 @@ func SummarizeResponseFrameFields(resp []byte) []string {
 	return summaries
 }
 
+// ParseResponseModelIDs returns distinct model IDs reported by assistantResponseEvent
+// frames in first-seen order. Kiro's "auto" routing can report the concrete
+// backend model here, which lets experiments distinguish routing metadata from
+// the model Claude Desktop requested.
 func ParseResponseModelIDs(resp []byte) []string {
 	var ids []string
 	seen := map[string]bool{}
