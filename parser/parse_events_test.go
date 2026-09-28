@@ -174,6 +174,22 @@ func TestParseEvents_TruncatedFrameDoesNotPanic(t *testing.T) {
 	_ = ParseEvents(truncated) // success = no panic
 }
 
+func TestSummarizeResponseFrameFields(t *testing.T) {
+	got := SummarizeResponseFrameFields(frames(
+		`{"content":"Hello","modelId":"claude-haiku-4.5"}`,
+		`{"unit":"credit","usage":0.5}`,
+		`{"content":"done","stop":true}`,
+	))
+	want := []string{
+		"#0{content,modelId}",
+		"#1{unit,usage}",
+		"#2{content,stop}",
+	}
+	if !equalStrings(got, want) {
+		t.Fatalf("SummarizeResponseFrameFields = %v, want %v", got, want)
+	}
+}
+
 func TestParseMeteringEvents(t *testing.T) {
 	events := ParseMeteringEvents(frames(
 		`{"content":"Hello"}`,
