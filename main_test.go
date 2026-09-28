@@ -94,6 +94,41 @@ func TestGetKiroModelID(t *testing.T) {
 // resolves the common current ids offline (catalog unreachable), and that
 // unknown ids pass through as a best-effort candidate rather than being
 // substituted for a different model.
+func TestNormalizeOpus1MSystemRole(t *testing.T) {
+	prefix := strings.Repeat("a", 5552)
+	suffix := strings.Repeat("z", 80)
+	baseline := prefix + strings.Repeat("b", 8720) + suffix
+	expanded := prefix + strings.Repeat("c", 15926) + suffix
+
+	normalizeSystemRoleMu.Lock()
+	ordinaryOpusSystemRole = ""
+	normalizeSystemRoleMu.Unlock()
+	t.Cleanup(func() {
+		normalizeSystemRoleMu.Lock()
+		ordinaryOpusSystemRole = ""
+		normalizeSystemRoleMu.Unlock()
+	})
+
+	baselineMessages := []AnthropicRequestMessage{
+		{Role: "user", Content: "probe"},
+		{Role: "system", Content: baseline},
+	}
+	if note := normalizeOpus1MSystemRole("claude-opus-5", baselineMessages); !strings.Contains(note, "seeded baseline") {
+		t.Fatalf("baseline note = %q", note)
+	}
+
+	expandedMessages := []AnthropicRequestMessage{
+		{Role: "user", Content: "probe"},
+		{Role: "system", Content: expanded},
+	}
+	if note := normalizeOpus1MSystemRole("claude-opus-5", expandedMessages); !strings.Contains(note, "applied") {
+		t.Fatalf("expanded note = %q", note)
+	}
+	if got := scalarSystemRoleMessage(expandedMessages); got != baseline {
+		t.Fatalf("normalized system role length = %d, want %d", len(got), len(baseline))
+	}
+}
+
 func TestCommonPrefixSuffixBytes(t *testing.T) {
 	prefix, suffix := commonPrefixSuffixBytes("abcXYZdef", "abc123def")
 	if prefix != 3 || suffix != 3 {

@@ -1830,6 +1830,65 @@ var (
 	lastOpusSystemRole string
 )
 
+var (
+	normalizeSystemRoleMu  sync.Mutex
+	ordinaryOpusSystemRole string
+)
+
+func scalarSystemRoleIndex(messages []AnthropicRequestMessage) int {
+	for i, msg := range messages {
+		if strings.EqualFold(msg.Role, "system") {
+			if _, ok := msg.Content.(string); ok {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+func normalizeOpus1MSystemRole(model string, messages []AnthropicRequestMessage) string {
+	if !strings.EqualFold(model, "claude-opus-5") {
+		return ""
+	}
+	idx := scalarSystemRoleIndex(messages)
+	if idx < 0 {
+		return ""
+	}
+	current, _ := messages[idx].Content.(string)
+
+	normalizeSystemRoleMu.Lock()
+	defer normalizeSystemRoleMu.Unlock()
+
+	if ordinaryOpusSystemRole == "" {
+		ordinaryOpusSystemRole = current
+		return fmt.Sprintf(
+			"System-role normalization: seeded baseline len=%d hash=%s",
+			len(current),
+			textComponentFingerprint(current),
+		)
+	}
+
+	baseline := ordinaryOpusSystemRole
+	prefix, suffix := commonPrefixSuffixBytes(baseline, current)
+	if len(current)-len(baseline) != 7206 || prefix != 5552 || suffix != 80 {
+		return fmt.Sprintf(
+			"System-role normalization: skipped baselineLen=%d currentLen=%d commonPrefix=%d commonSuffix=%d",
+			len(baseline),
+			len(current),
+			prefix,
+			suffix,
+		)
+	}
+
+	originalHash := textComponentFingerprint(current)
+	messages[idx].Content = baseline
+	return fmt.Sprintf(
+		"System-role normalization: applied original=%s normalized=%s",
+		originalHash,
+		textComponentFingerprint(baseline),
+	)
+}
+
 func scalarSystemRoleMessage(messages []AnthropicRequestMessage) string {
 	for _, msg := range messages {
 		if !strings.EqualFold(msg.Role, "system") {
@@ -4733,6 +4792,10 @@ func handleStreamRequestWithLogger(w http.ResponseWriter, anthropicReq Anthropic
 		lg.LogInfo(fmt.Sprintf("Authorization fingerprint: [%s:%s] %s", sessionID, requestID, fingerprint))
 	}
 
+	if note := normalizeOpus1MSystemRole(anthropicReq.Model, anthropicReq.Messages); note != "" {
+		lg.LogInfo(fmt.Sprintf("%s [%s:%s]", note, sessionID, requestID))
+	}
+
 	// Build CodeWhisperer request
 	cwReq := buildCodeWhispererRequest(anthropicReq, token)
 	lg.LogInfo(fmt.Sprintf("Model route: [%s:%s] incoming=%s sent=%s", sessionID, requestID, anthropicReq.Model, cwReq.ConversationState.CurrentMessage.UserInputMessage.ModelId))
@@ -7448,6 +7511,10 @@ func handleNonStreamRequest(w http.ResponseWriter, anthropicReq AnthropicRequest
 		if fingerprint := accessTokenFingerprint(token.AccessToken); fingerprint != "" {
 			lg.LogInfo(fmt.Sprintf("Authorization fingerprint: [%s:%s] %s", sessionID, requestID, fingerprint))
 		}
+	}
+
+	if note := normalizeOpus1MSystemRole(anthropicReq.Model, anthropicReq.Messages); note != "" && lg != nil {
+		lg.LogInfo(fmt.Sprintf("%s [%s:%s]", note, sessionID, requestID))
 	}
 
 	// Build CodeWhisperer request
