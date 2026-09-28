@@ -4775,6 +4775,10 @@ func handleStreamRequestWithLogger(w http.ResponseWriter, anthropicReq Anthropic
 	}
 	defer resp.Body.Close()
 
+	if names := slices.Sorted(maps.Keys(resp.Header)); len(names) > 0 {
+		lg.LogInfo(fmt.Sprintf("Backend HTTP response header names: [%s:%s] %s", sessionID, requestID, strings.Join(names, ", ")))
+	}
+
 	// Read entire response body
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -7405,6 +7409,12 @@ func handleNonStreamRequest(w http.ResponseWriter, anthropicReq AnthropicRequest
 		os.MkdirAll(debugDir, 0700)
 		os.WriteFile(filepath.Join(debugDir, "last-cw-request.json"), cwReqBody, 0600)
 		os.WriteFile(filepath.Join(debugDir, "last-cw-response.bin"), cwRespBody, 0600)
+	}
+
+	if lg != nil {
+		if names := slices.Sorted(maps.Keys(resp.Header)); len(names) > 0 {
+			lg.LogInfo(fmt.Sprintf("Backend HTTP response header names: [%s:%s] %s", sessionID, requestID, strings.Join(names, ", ")))
+		}
 	}
 
 	if ids := parser.ParseResponseModelIDs(cwRespBody); len(ids) > 0 && lg != nil {
