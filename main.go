@@ -2085,6 +2085,12 @@ func buildCodeWhispererRequest(anthropicReq AnthropicRequest, token TokenData) C
 		cwReq.ConversationState.ConversationId = generateUUID()
 	}
 	if effort := resolveNativeEffort(kiroModel, anthropicReq); effort != "" {
+		// Experiment: keep the Opus 5.5 route fixed and change only outgoing
+		// effort from the inbound low setting to high.
+		if strings.EqualFold(anthropicReq.Model, "claude-opus-5") &&
+			strings.EqualFold(kiroModel, "claude-opus-5.5") {
+			effort = "high"
+		}
 		cwReq.AdditionalModelRequestFields = &AdditionalModelRequestFields{
 			OutputConfig: &OutputConfig{Effort: effort},
 		}
