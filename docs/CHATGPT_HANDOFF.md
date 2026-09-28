@@ -107,6 +107,8 @@ The A→B→A reversal is complete and PR #24 adds a family boundary control: un
 
 Do not infer from this alone that the physical harness implementation changes. The reasoning/signature response shape is ruled out as the identity discriminator, and PR #25/#26 ruled out hidden serialized request-field differences when comparing Opus 5/low with Opus 5.5/low. PR #27 then showed that Opus 5.5 at medium effort returns `Claude Code`, and the subsequent low-effort reversal returned `Kiro` again. The strongest supported conclusion is now an interaction: the backend's self-identification behavior on the Opus 5.5 path is effort-sensitive, with low and medium producing different outcomes reproducibly in the standard probe. The exact server-side mechanism remains unobserved.
 
+PR #28 high-effort observation: repeated attempts in one evolving session were mixed; a later correlated Opus 5.5 request answered `Kiro`. Because those retries had different request fingerprints, do not treat high effort as a clean deterministic boundary. This disproves only the simple claim that high effort always produces `Claude Code`. Future effort mapping should use identical first-turn probes in fresh sessions.
+
 ## Standard probe
 
 Use a **new Claude Desktop Code session** for each controlled comparison:
