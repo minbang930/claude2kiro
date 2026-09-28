@@ -174,6 +174,43 @@ func TestParseEvents_TruncatedFrameDoesNotPanic(t *testing.T) {
 	_ = ParseEvents(truncated) // success = no panic
 }
 
+func encodedHeaders(pairs ...string) []byte {
+	var b bytes.Buffer
+	for i := 0; i+1 < len(pairs); i += 2 {
+		name := pairs[i]
+		value := pairs[i+1]
+		b.WriteByte(byte(len(name)))
+		b.WriteString(name)
+		b.WriteByte(7)
+		binary.Write(&b, binary.BigEndian, uint16(len(value)))
+		b.WriteString(value)
+	}
+	return b.Bytes()
+}
+
+func TestSummarizeResponseFrameHeaders(t *testing.T) {
+	var all []byte
+	all = append(all, buildFrame(encodedHeaders(
+		":event-type", "assistantResponseEvent",
+		":content-type", "application/json",
+		":message-type", "event",
+	), `{"content":"Hello"}`)...)
+	all = append(all, buildFrame(encodedHeaders(
+		":event-type", "meteringEvent",
+		":content-type", "application/json",
+		":message-type", "event",
+	), `{"unit":"credit","usage":0.5}`)...)
+
+	got := SummarizeResponseFrameHeaders(all)
+	want := []string{
+		"#0{:content-type=application/json,:event-type=assistantResponseEvent,:message-type=event}",
+		"#1{:content-type=application/json,:event-type=meteringEvent,:message-type=event}",
+	}
+	if !equalStrings(got, want) {
+		t.Fatalf("SummarizeResponseFrameHeaders = %v, want %v", got, want)
+	}
+}
+
 func TestSummarizeResponseFrameFields(t *testing.T) {
 	got := SummarizeResponseFrameFields(frames(
 		`{"content":"Hello","modelId":"claude-haiku-4.5"}`,
