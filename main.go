@@ -2057,6 +2057,11 @@ func buildCodeWhispererRequest(anthropicReq AnthropicRequest, token TokenData) C
 		strings.EqualFold(anthropicReq.Model, "claude-opus-5.5") {
 		kiroModel = "claude-opus-5"
 	}
+	// Experiment: change only the sent model ID for the current Opus 5
+	// control while preserving the request fingerprint instrumentation.
+	if strings.EqualFold(anthropicReq.Model, "claude-opus-5") {
+		kiroModel = "claude-opus-5.5"
+	}
 	historyMode := cfg.Advanced.HistoryMode
 	if historyMode == "" {
 		historyMode = "full"
