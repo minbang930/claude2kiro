@@ -93,6 +93,17 @@ func TestGetKiroModelID(t *testing.T) {
 // resolves the common current ids offline (catalog unreachable), and that
 // unknown ids pass through as a best-effort candidate rather than being
 // substituted for a different model.
+func TestExactRequestFingerprintTracksEveryByte(t *testing.T) {
+	a := []byte(`{"conversationId":"a","modelId":"claude-opus-5.5"}`)
+	b := []byte(`{"conversationId":"b","modelId":"claude-opus-5.5"}`)
+	if gotA, gotB := exactRequestFingerprint(a), exactRequestFingerprint(b); gotA == "" || gotA == gotB {
+		t.Fatalf("exact fingerprint should change with serialized body: %q vs %q", gotA, gotB)
+	}
+	if got := exactRequestFingerprint(a); got != exactRequestFingerprint(append([]byte(nil), a...)) {
+		t.Fatalf("identical bytes should keep fingerprint stable: %q", got)
+	}
+}
+
 func TestRequestWireFingerprintIgnoresRoutingIDs(t *testing.T) {
 	var a CodeWhispererRequest
 	a.ConversationState.ConversationId = "conversation-a"

@@ -1811,6 +1811,14 @@ func formatMeteringUsage(events []parser.MeteringEvent) string {
 // request-routing identifiers that are expected to differ between controlled
 // runs. A matching fingerprint means every other serialized request field is
 // byte-equivalent after canonical JSON marshaling.
+func exactRequestFingerprint(body []byte) string {
+	if len(body) == 0 {
+		return ""
+	}
+	sum := sha256.Sum256(body)
+	return hex.EncodeToString(sum[:8])
+}
+
 func requestWireFingerprint(cwReq CodeWhispererRequest) string {
 	body, err := json.Marshal(cwReq)
 	if err != nil {
@@ -4583,6 +4591,9 @@ func handleStreamRequestWithLogger(w http.ResponseWriter, anthropicReq Anthropic
 	if fingerprint := requestWireFingerprint(cwReq); fingerprint != "" {
 		lg.LogInfo(fmt.Sprintf("Request wire fingerprint: [%s:%s] %s (ignores modelId,conversationId)", sessionID, requestID, fingerprint))
 	}
+	if fingerprint := exactRequestFingerprint(cwReqBody); fingerprint != "" {
+		lg.LogInfo(fmt.Sprintf("Exact request fingerprint: [%s:%s] %s", sessionID, requestID, fingerprint))
+	}
 
 	// Create streaming request
 	var proxyReq *http.Request
@@ -7280,6 +7291,9 @@ func handleNonStreamRequest(w http.ResponseWriter, anthropicReq AnthropicRequest
 		lg.LogInfo(requestMetricsSummary(cwReq, len(cwReqBody), config.Get()))
 		if fingerprint := requestWireFingerprint(cwReq); fingerprint != "" {
 			lg.LogInfo(fmt.Sprintf("Request wire fingerprint: [%s:%s] %s (ignores modelId,conversationId)", sessionID, requestID, fingerprint))
+		}
+		if fingerprint := exactRequestFingerprint(cwReqBody); fingerprint != "" {
+			lg.LogInfo(fmt.Sprintf("Exact request fingerprint: [%s:%s] %s", sessionID, requestID, fingerprint))
 		}
 	}
 
