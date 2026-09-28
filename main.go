@@ -2018,6 +2018,12 @@ func buildCodeWhispererRequest(anthropicReq AnthropicRequest, token TokenData) C
 		strings.EqualFold(anthropicReq.Model, "claude-opus-5.5") {
 		kiroModel = "claude-opus-5"
 	}
+	// Experiment: for the current direct Opus 5 control, change only the model
+	// id sent to Kiro. All prompt, origin, task type, tools, history, and
+	// correlation instrumentation stay identical to the #22 baseline.
+	if strings.EqualFold(anthropicReq.Model, "claude-opus-5") {
+		kiroModel = "claude-opus-5.5"
+	}
 	historyMode := cfg.Advanced.HistoryMode
 	if historyMode == "" {
 		historyMode = "full"
