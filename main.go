@@ -2024,6 +2024,38 @@ func requestComponentSummary(anthropicReq AnthropicRequest, cwReq CodeWhispererR
 	)
 }
 
+func shortStringFingerprint(value string) string {
+	if value == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:8])
+}
+
+func backendResponseIdentitySummary(header http.Header, requestConversationID string) string {
+	conversationID := strings.TrimSpace(header.Get("X-Amzn-Codewhisperer-Conversation-Id"))
+	requestID := strings.TrimSpace(header.Get("X-Amzn-Requestid"))
+	if conversationID == "" && requestID == "" {
+		return ""
+	}
+
+	conversationFingerprint := "absent"
+	if conversationID != "" {
+		conversationFingerprint = shortStringFingerprint(conversationID)
+	}
+	requestFingerprint := "absent"
+	if requestID != "" {
+		requestFingerprint = shortStringFingerprint(requestID)
+	}
+
+	return fmt.Sprintf(
+		"Backend response identity: conversation=%s sameAsRequest=%t requestId=%s",
+		conversationFingerprint,
+		conversationID != "" && conversationID == requestConversationID,
+		requestFingerprint,
+	)
+}
+
 func accessTokenFingerprint(token string) string {
 	if token == "" {
 		return ""
@@ -5075,6 +5107,9 @@ func handleStreamRequestWithLogger(w http.ResponseWriter, anthropicReq Anthropic
 	if names := slices.Sorted(maps.Keys(resp.Header)); len(names) > 0 {
 		lg.LogInfo(fmt.Sprintf("Backend HTTP response header names: [%s:%s] %s", sessionID, requestID, strings.Join(names, ", ")))
 	}
+	if summary := backendResponseIdentitySummary(resp.Header, cwReq.ConversationState.ConversationId); summary != "" {
+		lg.LogInfo(fmt.Sprintf("%s [%s:%s]", summary, sessionID, requestID))
+	}
 
 	// Read entire response body
 	respBody, err := io.ReadAll(resp.Body)
@@ -7731,6 +7766,9 @@ func handleNonStreamRequest(w http.ResponseWriter, anthropicReq AnthropicRequest
 	if lg != nil {
 		if names := slices.Sorted(maps.Keys(resp.Header)); len(names) > 0 {
 			lg.LogInfo(fmt.Sprintf("Backend HTTP response header names: [%s:%s] %s", sessionID, requestID, strings.Join(names, ", ")))
+		}
+		if summary := backendResponseIdentitySummary(resp.Header, cwReq.ConversationState.ConversationId); summary != "" {
+			lg.LogInfo(fmt.Sprintf("%s [%s:%s]", summary, sessionID, requestID))
 		}
 	}
 
