@@ -76,15 +76,11 @@ function Download-ArtifactWithGh(
                     throw "gh run download failed."
                 }
 
-                $exe = Get-ChildItem -LiteralPath $Destination -Filter "*.exe" -Recurse |
-                    Where-Object { $_.Name -match "claude2kiro.*amd64.*\.exe$" -or $_.Name -eq "claude2kiro.exe" } |
+                $exe = Get-ChildItem -LiteralPath $Destination -Filter "claude2kiro-windows-amd64.exe" -Recurse |
                     Select-Object -First 1
 
                 if (-not $exe) {
-                    $exe = Get-ChildItem -LiteralPath $Destination -Filter "*.exe" -Recurse | Select-Object -First 1
-                }
-                if (-not $exe) {
-                    throw "Windows artifact downloaded, but no EXE was found."
+                    throw "Windows artifact downloaded, but claude2kiro-windows-amd64.exe was not found."
                 }
                 return $exe.FullName
             }
