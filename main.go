@@ -2018,6 +2018,11 @@ func buildCodeWhispererRequest(anthropicReq AnthropicRequest, token TokenData) C
 		strings.EqualFold(anthropicReq.Model, "claude-opus-5.5") {
 		kiroModel = "claude-opus-5"
 	}
+	// Experiment: boundary control for runtime self-identification. For the
+	// current direct Opus 5 request, change only the model id sent to Kiro.
+	if strings.EqualFold(anthropicReq.Model, "claude-opus-5") {
+		kiroModel = "claude-opus-4.8"
+	}
 	historyMode := cfg.Advanced.HistoryMode
 	if historyMode == "" {
 		historyMode = "full"
