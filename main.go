@@ -2018,6 +2018,9 @@ func buildCodeWhispererRequest(anthropicReq AnthropicRequest, token TokenData) C
 		strings.EqualFold(anthropicReq.Model, "claude-opus-5.5") {
 		kiroModel = "claude-opus-5"
 	}
+	if lg != nil {
+		lg.LogInfo(fmt.Sprintf("Model route: incoming=%s sent=%s", anthropicReq.Model, kiroModel))
+	}
 	historyMode := cfg.Advanced.HistoryMode
 	if historyMode == "" {
 		historyMode = "full"
