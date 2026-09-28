@@ -4512,7 +4512,7 @@ func handleStreamRequestWithLogger(w http.ResponseWriter, anthropicReq Anthropic
 
 	// Build CodeWhisperer request
 	cwReq := buildCodeWhispererRequest(anthropicReq, token)
-	lg.LogInfo(fmt.Sprintf("Model route [%s:%s]: incoming=%s sent=%s", sessionID, requestID, anthropicReq.Model, cwReq.ConversationState.CurrentMessage.UserInputMessage.ModelId))
+	lg.LogInfo(fmt.Sprintf("Model route: [%s:%s] incoming=%s sent=%s", sessionID, requestID, anthropicReq.Model, cwReq.ConversationState.CurrentMessage.UserInputMessage.ModelId))
 
 	// Keep the stable conversationId concurrency-safe: parallel Task subagents
 	// share the parent session id, so without this they'd all hit the backend on
@@ -4790,7 +4790,7 @@ func handleStreamRequestWithLogger(w http.ResponseWriter, anthropicReq Anthropic
 	// Experiment observability: when Kiro's auto router reports the concrete
 	// serving model in assistantResponseEvent, surface it in the normal proxy log.
 	if ids := parser.ParseResponseModelIDs(respBody); len(ids) > 0 {
-		lg.LogInfo(fmt.Sprintf("Backend response model(s) [%s:%s]: %s", sessionID, requestID, strings.Join(ids, ", ")))
+		lg.LogInfo(fmt.Sprintf("Backend response model(s): [%s:%s] %s", sessionID, requestID, strings.Join(ids, ", ")))
 	}
 
 	// Use CodeWhisperer parser
@@ -7204,7 +7204,7 @@ func handleNonStreamRequest(w http.ResponseWriter, anthropicReq AnthropicRequest
 	// Build CodeWhisperer request
 	cwReq := buildCodeWhispererRequest(anthropicReq, token)
 	if lg != nil {
-		lg.LogInfo(fmt.Sprintf("Model route [%s:%s]: incoming=%s sent=%s", sessionID, requestID, anthropicReq.Model, cwReq.ConversationState.CurrentMessage.UserInputMessage.ModelId))
+		lg.LogInfo(fmt.Sprintf("Model route: [%s:%s] incoming=%s sent=%s", sessionID, requestID, anthropicReq.Model, cwReq.ConversationState.CurrentMessage.UserInputMessage.ModelId))
 	}
 
 	// Concurrency-safe stable conversationId (see claimStableConversation). Must
@@ -7402,7 +7402,7 @@ func handleNonStreamRequest(w http.ResponseWriter, anthropicReq AnthropicRequest
 	}
 
 	if ids := parser.ParseResponseModelIDs(cwRespBody); len(ids) > 0 && lg != nil {
-		lg.LogInfo(fmt.Sprintf("Backend response model(s) [%s:%s]: %s", sessionID, requestID, strings.Join(ids, ", ")))
+		lg.LogInfo(fmt.Sprintf("Backend response model(s): [%s:%s] %s", sessionID, requestID, strings.Join(ids, ", ")))
 	}
 	events := parser.ParseEvents(cwRespBody)
 	if usageMsg := formatMeteringUsage(parser.ParseMeteringEvents(cwRespBody)); usageMsg != "" && lg != nil {
