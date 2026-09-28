@@ -2094,7 +2094,7 @@ func buildCodeWhispererRequest(anthropicReq AnthropicRequest, token TokenData) C
 
 	cwReq.ConversationState.CurrentMessage.UserInputMessage.Content = currentContent
 	cwReq.ConversationState.CurrentMessage.UserInputMessage.ModelId = kiroModel
-	cwReq.ConversationState.CurrentMessage.UserInputMessage.Origin = ""
+	cwReq.ConversationState.CurrentMessage.UserInputMessage.Origin = "UNKNOWN"
 	// Process tools information
 	// CodeWhisperer has limits: ~10KB per tool description, ~90 tools max (~260KB body limit)
 	const maxToolDescLength = 10000
@@ -2191,7 +2191,7 @@ func buildCodeWhispererRequest(anthropicReq AnthropicRequest, token TokenData) C
 		defaultUserMsg := HistoryUserMessage{}
 		defaultUserMsg.UserInputMessage.Content = "Continue."
 		defaultUserMsg.UserInputMessage.ModelId = kiroModel
-		defaultUserMsg.UserInputMessage.Origin = ""
+		defaultUserMsg.UserInputMessage.Origin = "UNKNOWN"
 
 		lastRole := ""
 		emit := func(role string, entry any) {
@@ -2234,7 +2234,7 @@ func buildCodeWhispererRequest(anthropicReq AnthropicRequest, token TokenData) C
 			userMsg := HistoryUserMessage{}
 			userMsg.UserInputMessage.Content = sanitizeHistoryContent(getMessageContentForToolMode(msg.Content, toolMode))
 			userMsg.UserInputMessage.ModelId = kiroModel
-			userMsg.UserInputMessage.Origin = ""
+			userMsg.UserInputMessage.Origin = "UNKNOWN"
 
 			if toolMode != "none_text" {
 				if toolResults := getMessageToolResults(msg.Content); len(toolResults) > 0 {
