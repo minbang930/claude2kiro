@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -74,6 +76,56 @@ type MeteringEvent struct {
 // frames in first-seen order. Kiro's "auto" routing can report the concrete
 // backend model here, which lets experiments distinguish routing metadata from
 // the model Claude Desktop requested.
+// SummarizeResponseFrameFields returns the top-level JSON field names for each
+// valid response frame without logging field values. This is experiment
+// observability only: it lets us compare response shapes without exposing
+// generated content or changing request behavior.
+func SummarizeResponseFrameFields(resp []byte) []string {
+	var summaries []string
+	r := bytes.NewReader(resp)
+	frameIndex := 0
+	for {
+		if r.Len() < 12 {
+			break
+		}
+		var totalLen, headerLen uint32
+		if err := binary.Read(r, binary.BigEndian, &totalLen); err != nil {
+			break
+		}
+		if err := binary.Read(r, binary.BigEndian, &headerLen); err != nil {
+			break
+		}
+		if totalLen < headerLen+12 || int(totalLen) > r.Len()+8 {
+			break
+		}
+		header := make([]byte, headerLen)
+		if _, err := io.ReadFull(r, header); err != nil {
+			break
+		}
+		payloadLen := int(totalLen) - int(headerLen) - 12
+		payload := make([]byte, payloadLen)
+		if _, err := io.ReadFull(r, payload); err != nil {
+			break
+		}
+		if _, err := r.Seek(4, io.SeekCurrent); err != nil {
+			break
+		}
+
+		payloadStr := strings.TrimPrefix(string(payload), "vent")
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(payloadStr), &raw); err == nil {
+			keys := make([]string, 0, len(raw))
+			for key := range raw {
+				keys = append(keys, key)
+			}
+			sort.Strings(keys)
+			summaries = append(summaries, "#"+strconv.Itoa(frameIndex)+"{"+strings.Join(keys, ",")+"}")
+		}
+		frameIndex++
+	}
+	return summaries
+}
+
 func ParseResponseModelIDs(resp []byte) []string {
 	var ids []string
 	seen := map[string]bool{}
