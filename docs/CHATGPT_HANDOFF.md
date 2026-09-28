@@ -58,7 +58,7 @@ The experiments are intentionally split into draft PRs. Do not merge an experime
 | #11 | `experiment/log-auto-selected-model` | add response `assistantResponseEvent.modelId` logging | backend reported `claude-haiku-4.5` for the auto run |
 | #12 | `experiment/fixed-haiku-4-5` | direct `claude-haiku-4.5` instead of `auto` | Claude Code; backend reported `claude-haiku-4.5` |
 | #13 | `experiment/fixed-opus-5` | direct `claude-opus-5` control | Claude Code, while backend response still reported `claude-haiku-4.5` |
-| #14 | `experiment/log-requested-sent-served` | instrumentation only: log incoming model and model actually sent; keep response model logging | **current next verification** |
+| #14 | `experiment/log-requested-sent-served` | instrumentation only: log incoming model and model actually sent; keep response model logging | live log showed `incoming=claude-opus-5 sent=claude-opus-5`, followed ~0.5s later by backend-reported `claude-haiku-4.5`; however a concurrent Haiku request was also in flight, so the response line is not yet uniquely paired |
 
 Important interpretation rule:
 
@@ -73,11 +73,12 @@ The strongest evidence so far is:
 2. Changing request `origin` changes provider persona/branding.
 3. `AI_EDITOR + vibe + auto` returned Claude Code and the response stream reported Haiku 4.5.
 4. Direct Haiku 4.5 also returned Claude Code.
-5. A later request entered the proxy as `claude-opus-5`, but the response stream again reported `claude-haiku-4.5`.
+5. PR #14 directly observed a request with `incoming=claude-opus-5 sent=claude-opus-5`.
+6. A backend response line reporting `claude-haiku-4.5` appeared about 0.5 seconds later, but a separate Haiku request was concurrently in flight. Therefore timing alone is insufficient to prove that the Haiku response belongs to the Opus request.
 
-The current unresolved question is whether the proxy truly sent `claude-opus-5` on that turn and the backend then reported Haiku 4.5, or whether another transformation occurred before dispatch.
+The current unresolved question is now narrower: does the backend-reported `claude-haiku-4.5` response belong to the exact request that the proxy sent as `claude-opus-5`?
 
-PR #14 exists specifically to answer this with a compact trace.
+PR #18 (`experiment/correlate-model-route`) is the next verification. It changes no request behavior; it adds the same session/request correlation key to the outgoing model-route log and the backend response-model log.
 
 ## Standard probe
 
@@ -94,7 +95,7 @@ Do not treat the model's self-report about its own model version as proof of the
 
 ## Standard model-route log check
 
-After PR #14 is installed, use:
+For the current correlated verification, install PR #18 and use:
 
 ```powershell
 .\scripts\Show-ModelRoute.ps1
@@ -103,11 +104,11 @@ After PR #14 is installed, use:
 Expected compact form:
 
 ```text
-Model route: incoming=claude-opus-5 sent=claude-opus-5
-Backend response model(s): claude-haiku-4.5
+Model route: [<session>:<request>] incoming=claude-opus-5 sent=claude-opus-5
+Backend response model(s): [<same-session>:<same-request>] claude-haiku-4.5
 ```
 
-That pair is the next decision point.
+Only treat the backend response as belonging to the Opus request when the correlation key is identical on both lines.
 
 ## No-more-ZIP workflow
 
