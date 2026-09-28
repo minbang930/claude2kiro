@@ -1826,8 +1826,8 @@ func textComponentFingerprint(value string) string {
 }
 
 var (
-	systemRoleDeltaMu   sync.Mutex
-	lastOpusSystemRole  string
+	systemRoleDeltaMu  sync.Mutex
+	lastOpusSystemRole string
 )
 
 func scalarSystemRoleMessage(messages []AnthropicRequestMessage) string {
