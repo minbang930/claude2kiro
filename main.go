@@ -2010,7 +2010,14 @@ func buildCodeWhispererRequest(anthropicReq AnthropicRequest, token TokenData) C
 		cwReq.ProfileArn = ""
 	}
 	cfg := config.Get()
-	kiroModel := "auto" // experiment: force backend auto model while Desktop still reports its selected model
+	kiroModel := getKiroModelID(anthropicReq.Model)
+	// Experiment: Claude Desktop cannot select /model auto, but the CLI-origin
+	// backend rejects Opus 5.5. Route only that selected model through backend
+	// auto so we can isolate the CLI-origin persona without changing other tests.
+	if strings.EqualFold(anthropicReq.Model, "claude-opus-5-5") ||
+		strings.EqualFold(anthropicReq.Model, "claude-opus-5.5") {
+		kiroModel = "auto"
+	}
 	historyMode := cfg.Advanced.HistoryMode
 	if historyMode == "" {
 		historyMode = "full"
