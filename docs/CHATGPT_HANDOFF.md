@@ -182,3 +182,5 @@ Before proposing a new experiment:
 
 
 PR #30 fixed-conversation retry note: the first live attempt overlapped Opus requests, so the concurrency guard replaced later fixed conversationIds with fresh UUIDs. Observed Opus convId prefixes were `93af8193`, `d124e1e5`, `094209d1`, and exact fingerprints differed. Treat this run as invalid for conversationId causality; repeat strictly sequentially, waiting for each Opus response to finish before starting the next fresh session.
+
+PR #30 valid fixed-conversation result: three strictly sequential fresh-session first-turn Opus requests all had `convId=93af8193`, canonical fingerprint `4a1f1bd83f2c86d3`, and exact serialized-body fingerprint `d5061eca430671b8`, yet outcomes were `Kiro`, `Kiro`, `Claude Code`. Therefore per-session conversationId differences are not required for the Opus 5.5 identity variability. This is direct evidence that byte-identical serialized request bodies can receive different identity responses. Caveat: reusing the same conversationId may allow unobserved backend conversation state to evolve across calls, so do not equate this alone with pure stateless randomness.
