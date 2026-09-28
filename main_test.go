@@ -93,6 +93,20 @@ func TestGetKiroModelID(t *testing.T) {
 // resolves the common current ids offline (catalog unreachable), and that
 // unknown ids pass through as a best-effort candidate rather than being
 // substituted for a different model.
+func TestAccessTokenFingerprint(t *testing.T) {
+	if got := accessTokenFingerprint(""); got != "" {
+		t.Fatalf("empty token fingerprint = %q, want empty", got)
+	}
+	a := accessTokenFingerprint("token-a")
+	b := accessTokenFingerprint("token-b")
+	if a == "" || b == "" || a == b {
+		t.Fatalf("token fingerprints should be stable and distinct: %q vs %q", a, b)
+	}
+	if a != accessTokenFingerprint("token-a") {
+		t.Fatalf("same token should keep fingerprint stable")
+	}
+}
+
 func TestExactRequestFingerprintTracksEveryByte(t *testing.T) {
 	a := []byte(`{"conversationId":"a","modelId":"claude-opus-5.5"}`)
 	b := []byte(`{"conversationId":"b","modelId":"claude-opus-5.5"}`)

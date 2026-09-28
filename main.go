@@ -1811,6 +1811,14 @@ func formatMeteringUsage(events []parser.MeteringEvent) string {
 // request-routing identifiers that are expected to differ between controlled
 // runs. A matching fingerprint means every other serialized request field is
 // byte-equivalent after canonical JSON marshaling.
+func accessTokenFingerprint(token string) string {
+	if token == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:8])
+}
+
 func exactRequestFingerprint(body []byte) string {
 	if len(body) == 0 {
 		return ""
@@ -4567,6 +4575,9 @@ func handleStreamRequestWithLogger(w http.ResponseWriter, anthropicReq Anthropic
 		sendErrorEvent(w, flusher, "error", fmt.Errorf("Token unavailable: %v. Please re-login", err))
 		return ""
 	}
+	if fingerprint := accessTokenFingerprint(token.AccessToken); fingerprint != "" {
+		lg.LogInfo(fmt.Sprintf("Authorization fingerprint: [%s:%s] %s", sessionID, requestID, fingerprint))
+	}
 
 	// Build CodeWhisperer request
 	cwReq := buildCodeWhispererRequest(anthropicReq, token)
@@ -7273,6 +7284,11 @@ func handleNonStreamRequest(w http.ResponseWriter, anthropicReq AnthropicRequest
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Token unavailable: %v. Please re-login", err), http.StatusInternalServerError)
 		return http.StatusInternalServerError
+	}
+	if lg != nil {
+		if fingerprint := accessTokenFingerprint(token.AccessToken); fingerprint != "" {
+			lg.LogInfo(fmt.Sprintf("Authorization fingerprint: [%s:%s] %s", sessionID, requestID, fingerprint))
+		}
 	}
 
 	// Build CodeWhisperer request
