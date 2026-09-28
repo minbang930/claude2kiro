@@ -59,6 +59,7 @@ The experiments are intentionally split into draft PRs. Do not merge an experime
 | #12 | `experiment/fixed-haiku-4-5` | direct `claude-haiku-4.5` instead of `auto` | Claude Code; backend reported `claude-haiku-4.5` |
 | #13 | `experiment/fixed-opus-5` | direct `claude-opus-5` control | Claude Code, while backend response still reported `claude-haiku-4.5` |
 | #14 | `experiment/log-requested-sent-served` | instrumentation only: log incoming model and model actually sent; keep response model logging | live log showed `incoming=claude-opus-5 sent=claude-opus-5`, followed ~0.5s later by backend-reported `claude-haiku-4.5`; however a concurrent Haiku request was also in flight, so the response line is not yet uniquely paired |
+| #18 | `experiment/correlate-model-route` | instrumentation only: add the same `[session:request]` key to sent-model and response-model logs | live log paired Haiku request `[9361248f:000003]` with backend-reported `claude-haiku-4.5`; concurrent Opus request `[6bb8d99d:000004]` was sent as `claude-opus-5`, but no response-model line for that key appeared in the captured output. Therefore the prior ~0.5s Haiku response line did not belong to the Opus request |
 
 Important interpretation rule:
 
@@ -74,11 +75,12 @@ The strongest evidence so far is:
 3. `AI_EDITOR + vibe + auto` returned Claude Code and the response stream reported Haiku 4.5.
 4. Direct Haiku 4.5 also returned Claude Code.
 5. PR #14 directly observed a request with `incoming=claude-opus-5 sent=claude-opus-5`.
-6. A backend response line reporting `claude-haiku-4.5` appeared about 0.5 seconds later, but a separate Haiku request was concurrently in flight. Therefore timing alone is insufficient to prove that the Haiku response belongs to the Opus request.
+6. PR #18 correlated the previously ambiguous Haiku response to the separate Haiku request: `[9361248f:000003]` was sent as Haiku and its response reported `claude-haiku-4.5` with the same key.
+7. The concurrent Opus request `[6bb8d99d:000004]` was sent as `claude-opus-5`, but the captured output contained no `Backend response model(s)` line with that key. The backend-reported model for that exact Opus request therefore remains unresolved.
 
-The current unresolved question is now narrower: does the backend-reported `claude-haiku-4.5` response belong to the exact request that the proxy sent as `claude-opus-5`?
+The current unresolved question is now narrower: what model ID, if any, does the backend report for the exact request that the proxy sent as `claude-opus-5`?
 
-PR #18 (`experiment/correlate-model-route`) is the next verification. It changes no request behavior; it adds the same session/request correlation key to the outgoing model-route log and the backend response-model log.
+PR #18 (`experiment/correlate-model-route`) has ruled out the earlier false temporal pairing with the concurrent Haiku request. The next step is to determine whether the Opus-correlated response arrives later, omits `assistantResponseEvent.modelId`, or terminates through an error/cancellation path.
 
 ## Standard probe
 
