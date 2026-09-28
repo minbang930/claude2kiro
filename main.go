@@ -191,7 +191,7 @@ type HistoryUserMessage struct {
 	UserInputMessage struct {
 		Content                 string              `json:"content"`
 		ModelId                 string              `json:"modelId"`
-		Origin                  string              `json:"origin"`
+		Origin                  string              `json:"origin,omitempty"`
 		UserInputMessageContext *HistoryUserContext `json:"userInputMessageContext,omitempty"`
 	} `json:"userInputMessage"`
 }
@@ -571,7 +571,7 @@ type CodeWhispererRequest struct {
 			UserInputMessage struct {
 				Content                 string       `json:"content"`
 				ModelId                 string       `json:"modelId"`
-				Origin                  string       `json:"origin"`
+				Origin                  string       `json:"origin,omitempty"`
 				Images                  []ImageBlock `json:"images,omitempty"`
 				UserInputMessageContext struct {
 					EnvState    *EnvState           `json:"envState,omitempty"`
@@ -2094,7 +2094,7 @@ func buildCodeWhispererRequest(anthropicReq AnthropicRequest, token TokenData) C
 
 	cwReq.ConversationState.CurrentMessage.UserInputMessage.Content = currentContent
 	cwReq.ConversationState.CurrentMessage.UserInputMessage.ModelId = kiroModel
-	cwReq.ConversationState.CurrentMessage.UserInputMessage.Origin = "AI_EDITOR"
+	cwReq.ConversationState.CurrentMessage.UserInputMessage.Origin = ""
 	// Process tools information
 	// CodeWhisperer has limits: ~10KB per tool description, ~90 tools max (~260KB body limit)
 	const maxToolDescLength = 10000
@@ -2191,7 +2191,7 @@ func buildCodeWhispererRequest(anthropicReq AnthropicRequest, token TokenData) C
 		defaultUserMsg := HistoryUserMessage{}
 		defaultUserMsg.UserInputMessage.Content = "Continue."
 		defaultUserMsg.UserInputMessage.ModelId = kiroModel
-		defaultUserMsg.UserInputMessage.Origin = "AI_EDITOR"
+		defaultUserMsg.UserInputMessage.Origin = ""
 
 		lastRole := ""
 		emit := func(role string, entry any) {
@@ -2234,7 +2234,7 @@ func buildCodeWhispererRequest(anthropicReq AnthropicRequest, token TokenData) C
 			userMsg := HistoryUserMessage{}
 			userMsg.UserInputMessage.Content = sanitizeHistoryContent(getMessageContentForToolMode(msg.Content, toolMode))
 			userMsg.UserInputMessage.ModelId = kiroModel
-			userMsg.UserInputMessage.Origin = "AI_EDITOR"
+			userMsg.UserInputMessage.Origin = ""
 
 			if toolMode != "none_text" {
 				if toolResults := getMessageToolResults(msg.Content); len(toolResults) > 0 {
