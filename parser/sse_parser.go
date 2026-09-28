@@ -90,14 +90,20 @@ func SummarizeResponseFrameHeaders(resp []byte) []string {
 		if err := binary.Read(r, binary.BigEndian, &headerLen); err != nil {
 			break
 		}
-		if totalLen < headerLen+12 || int(totalLen) > r.Len()+8 {
+		if totalLen < headerLen+16 || int(totalLen) > r.Len()+8 {
+			break
+		}
+		// AWS EventStream places a 4-byte prelude CRC between the two length
+		// fields and the header block. This helper parses the wire framing
+		// correctly without changing the production payload parser.
+		if _, err := r.Seek(4, io.SeekCurrent); err != nil {
 			break
 		}
 		header := make([]byte, headerLen)
 		if _, err := io.ReadFull(r, header); err != nil {
 			break
 		}
-		payloadLen := int(totalLen) - int(headerLen) - 12
+		payloadLen := int(totalLen) - int(headerLen) - 16
 		if _, err := r.Seek(int64(payloadLen+4), io.SeekCurrent); err != nil {
 			break
 		}
