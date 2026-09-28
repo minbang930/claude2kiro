@@ -91,6 +91,7 @@ The strongest evidence so far is:
 14. The A→B→A reversal succeeded: after reinstalling #22, a fresh-session probe again answered `Claude Code` with correlated route `[3e7857c0:000003] incoming=claude-opus-5 sent=claude-opus-5`. This materially reduces session randomness as an explanation for the identity flip.
 15. PR #24 sent the same incoming `claude-opus-5` request as `claude-opus-4.8`; the standard probe answered `Claude Code` and the correlated route was `[f1c0c2f0:000003] incoming=claude-opus-5 sent=claude-opus-4.8`. The observed Kiro self-identification is therefore not a generic direct-Opus-family effect.
 16. The already-instrumented #23 response shows a concrete wire-shape difference on the Opus 5.5/Kiro path: frames #0–#22 had top-level `text`, frame #23 had `signature`, and all #0–#23 carried AWS event type `reasoningContentEvent`; frame #24 was the sole `assistantResponseEvent` with `content`, followed by context-usage and metering events. The request completed 200 in 10.836s with final text `Kiro`.
+17. PR #24 showed the same reasoning-event pattern on the Opus 4.8 run even though the standard probe answered `Claude Code`: text reasoning frames, then a signature frame, then one assistant-response frame, followed by context usage and metering. So the presence of reasoning/signature frames is not the discriminator between the observed `Kiro` and `Claude Code` self-identification results.
 
 For a direct `claude-opus-5` request, the currently observed response path does not expose a concrete served-model identifier: not in the response payload, not in AWS EventStream headers, and not in HTTP response header names. The proxy does observe that it sent `claude-opus-5` and received a successful 200 response, but should not infer the physical inference model from that alone.
 
@@ -98,7 +99,7 @@ The served-model sub-question is observationally exhausted with the current publ
 
 The A→B→A reversal is complete and PR #24 adds a family boundary control: under otherwise identical request construction, sent `modelId=claude-opus-5` and `claude-opus-4.8` yield `Claude Code`, while sent `modelId=claude-opus-5.5` yields `Kiro` in the standard probe. This is strong evidence that the observed self-identification behavior is specifically associated with the Opus 5.5 request path, not direct Opus requests in general.
 
-Do not infer from this alone that the physical harness implementation changes. A new correlated wire fact is now established: the Opus 5.5/Kiro path emits a long `reasoningContentEvent` sequence with a terminal `signature` before the final `assistantResponseEvent`. The next useful control is to inspect the already-recorded response-frame shape for the Opus 4.8/Claude Code run (and, if needed, a fresh Opus 5 baseline) before adding another request mutation.
+Do not infer from this alone that the physical harness implementation changes. A new correlated wire fact is now established: the Opus 5.5/Kiro path emits a long `reasoningContentEvent` sequence with a terminal `signature` before the final `assistantResponseEvent`. The Opus 4.8 control now rules out the reasoning-event response shape as the identity discriminator. The strongest remaining observed discriminator is the sent model ID itself: Opus 5.5 versus Opus 5/4.8 under otherwise controlled request construction.
 
 ## Standard probe
 
