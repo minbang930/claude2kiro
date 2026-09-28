@@ -20,6 +20,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"os"
 	"os/exec"
@@ -2022,6 +2023,57 @@ func requestComponentSummary(anthropicReq AnthropicRequest, cwReq CodeWhispererR
 		componentFingerprint(cwReq.AdditionalModelRequestFields),
 		componentFingerprint(cwReq.ProfileArn),
 	)
+}
+
+var (
+	backendConnMu     sync.Mutex
+	backendConnIDs    = map[net.Conn]int{}
+	nextBackendConnID int
+)
+
+func backendConnectionID(conn net.Conn) int {
+	if conn == nil {
+		return 0
+	}
+	backendConnMu.Lock()
+	defer backendConnMu.Unlock()
+	if id, ok := backendConnIDs[conn]; ok {
+		return id
+	}
+	nextBackendConnID++
+	backendConnIDs[conn] = nextBackendConnID
+	return nextBackendConnID
+}
+
+func backendTransportSummary(info httptrace.GotConnInfo) string {
+	remote := ""
+	if info.Conn != nil && info.Conn.RemoteAddr() != nil {
+		remote = info.Conn.RemoteAddr().String()
+	}
+	remoteFingerprint := "absent"
+	if remote != "" {
+		remoteFingerprint = shortStringFingerprint(remote)
+	}
+	return fmt.Sprintf(
+		"Backend transport: conn=%d reused=%t wasIdle=%t idleMs=%d remote=%s",
+		backendConnectionID(info.Conn),
+		info.Reused,
+		info.WasIdle,
+		info.IdleTime.Milliseconds(),
+		remoteFingerprint,
+	)
+}
+
+func withBackendTransportTrace(req *http.Request, lg *logger.Logger, sessionID, requestID string) *http.Request {
+	if req == nil || lg == nil {
+		return req
+	}
+	trace := &httptrace.ClientTrace{
+		GotConn: func(info httptrace.GotConnInfo) {
+			lg.LogInfo(fmt.Sprintf("%s [%s:%s]", backendTransportSummary(info), sessionID, requestID))
+		},
+	}
+	return req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
 }
 
 func shortStringFingerprint(value string) string {
@@ -4937,7 +4989,8 @@ func handleStreamRequestWithLogger(w http.ResponseWriter, anthropicReq Anthropic
 		}
 
 		sent++
-		resp, lastErr = proxyHttpClient.Do(proxyReq)
+		tracedReq := withBackendTransportTrace(proxyReq, lg, sessionID, requestID)
+		resp, lastErr = proxyHttpClient.Do(tracedReq)
 		if lastErr != nil {
 			lg.LogError(fmt.Sprintf("CodeWhisperer request error (attempt %d): %v", attempt+1, lastErr))
 			continue
@@ -7652,7 +7705,8 @@ func handleNonStreamRequest(w http.ResponseWriter, anthropicReq AnthropicRequest
 	const bearerRetriesPerIdentity = 3
 	bearerRetries := 0
 	for {
-		resp, err = proxyHttpClient.Do(proxyReq)
+		tracedReq := withBackendTransportTrace(proxyReq, lg, sessionID, requestID)
+		resp, err = proxyHttpClient.Do(tracedReq)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Failed to send request: %v", err), http.StatusInternalServerError)
 			return http.StatusInternalServerError
