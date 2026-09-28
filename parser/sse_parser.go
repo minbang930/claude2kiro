@@ -56,6 +56,7 @@ type assistantResponseEvent struct {
 	Name      string  `json:"name"`
 	ToolUseId string  `json:"toolUseId"`
 	Stop      bool    `json:"stop"`
+	ModelID   string  `json:"modelId,omitempty"`
 }
 
 type SSEEvent struct {
@@ -67,6 +68,54 @@ type MeteringEvent struct {
 	Unit       string  `json:"unit"`
 	UnitPlural string  `json:"unitPlural,omitempty"`
 	Usage      float64 `json:"usage"`
+}
+
+// ParseResponseModelIDs returns distinct model IDs reported by assistantResponseEvent
+// frames in first-seen order. Kiro's "auto" routing can report the concrete
+// backend model here, which lets experiments distinguish routing metadata from
+// the model Claude Desktop requested.
+func ParseResponseModelIDs(resp []byte) []string {
+	var ids []string
+	seen := map[string]bool{}
+	r := bytes.NewReader(resp)
+	for {
+		if r.Len() < 12 {
+			break
+		}
+		var totalLen, headerLen uint32
+		if err := binary.Read(r, binary.BigEndian, &totalLen); err != nil {
+			break
+		}
+		if err := binary.Read(r, binary.BigEndian, &headerLen); err != nil {
+			break
+		}
+		if totalLen < headerLen+12 || int(totalLen) > r.Len()+8 {
+			break
+		}
+		header := make([]byte, headerLen)
+		if _, err := io.ReadFull(r, header); err != nil {
+			break
+		}
+		payloadLen := int(totalLen) - int(headerLen) - 12
+		payload := make([]byte, payloadLen)
+		if _, err := io.ReadFull(r, payload); err != nil {
+			break
+		}
+		if _, err := r.Seek(4, io.SeekCurrent); err != nil {
+			break
+		}
+		payloadStr := strings.TrimPrefix(string(payload), "vent")
+		var evt assistantResponseEvent
+		if err := json.Unmarshal([]byte(payloadStr), &evt); err != nil {
+			continue
+		}
+		id := strings.TrimSpace(evt.ModelID)
+		if id != "" && !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 func ParseMeteringEvents(resp []byte) []MeteringEvent {

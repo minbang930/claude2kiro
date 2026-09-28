@@ -4786,6 +4786,12 @@ func handleStreamRequestWithLogger(w http.ResponseWriter, anthropicReq Anthropic
 		debug.WriteDebugFile("cw-response", respBody)
 	}
 
+	// Experiment observability: when Kiro's auto router reports the concrete
+	// serving model in assistantResponseEvent, surface it in the normal proxy log.
+	if ids := parser.ParseResponseModelIDs(respBody); len(ids) > 0 {
+		lg.LogInfo(fmt.Sprintf("Backend response model(s): %s", strings.Join(ids, ", ")))
+	}
+
 	// Use CodeWhisperer parser
 	events := parser.ParseEvents(respBody)
 	if usageMsg := formatMeteringUsage(parser.ParseMeteringEvents(respBody)); usageMsg != "" {
@@ -7391,6 +7397,9 @@ func handleNonStreamRequest(w http.ResponseWriter, anthropicReq AnthropicRequest
 		os.WriteFile(filepath.Join(debugDir, "last-cw-response.bin"), cwRespBody, 0600)
 	}
 
+	if ids := parser.ParseResponseModelIDs(cwRespBody); len(ids) > 0 && lg != nil {
+		lg.LogInfo(fmt.Sprintf("Backend response model(s): %s", strings.Join(ids, ", ")))
+	}
 	events := parser.ParseEvents(cwRespBody)
 	if usageMsg := formatMeteringUsage(parser.ParseMeteringEvents(cwRespBody)); usageMsg != "" && lg != nil {
 		lg.LogInfo(fmt.Sprintf("%s [%s:%s]", usageMsg, sessionID, requestID))
