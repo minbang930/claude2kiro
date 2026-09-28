@@ -61,6 +61,7 @@ The experiments are intentionally split into draft PRs. Do not merge an experime
 | #14 | `experiment/log-requested-sent-served` | instrumentation only: log incoming model and model actually sent; keep response model logging | live log showed `incoming=claude-opus-5 sent=claude-opus-5`, followed ~0.5s later by backend-reported `claude-haiku-4.5`; however a concurrent Haiku request was also in flight, so the response line is not yet uniquely paired |
 | #18 | `experiment/correlate-model-route` | instrumentation only: add the same `[session:request]` key to sent-model and response-model logs | live log paired Haiku `[9361248f:000003]` with backend-reported `claude-haiku-4.5`. Concurrent Opus `[6bb8d99d:000004]` was sent as `claude-opus-5` and completed `200` in 2.758s with response text `Claude Code`, but emitted no response-model line. Because response-model parsing runs before metering/parser/RES logging, this means `ParseResponseModelIDs` returned empty for that successful Opus response body |
 | #20 | `experiment/log-response-frame-fields` | instrumentation only: log top-level JSON field names for each successful response frame; no field values | live correlated run showed Haiku `[a0ad19de:000003]` content frames had `{content,modelId}` and reported `claude-haiku-4.5`; Opus `[87a4b54e:000004]` content frame had only `{content}`, followed by `{contextUsagePercentage}` and metering. Thus the successful Opus wire payload omitted the `modelId` key itself |
+| #21 | `experiment/log-response-frame-headers` | instrumentation only: log AWS EventStream header metadata for each response frame | after fixing the helper to account for the 4-byte prelude CRC, live Opus `[834d349a:000003]` frames were ordinary `assistantResponseEvent` / `contextUsageEvent` / `meteringEvent` frames with `application/json` and `message-type=event`; no model/routing identifier appeared in frame headers |
 
 Important interpretation rule:
 
@@ -80,10 +81,11 @@ The strongest evidence so far is:
 7. The concurrent Opus request `[6bb8d99d:000004]` was sent as `claude-opus-5`, completed successfully with HTTP 200 in 2.758s, and returned `Claude Code` to Claude Desktop.
 8. That successful Opus response produced metering and parsed events but no `Backend response model(s)` line. In the current code, response-model extraction runs before those later logs, so `ParseResponseModelIDs` returned no model ID for that response body. The absence is not explained by truncation, delay, cancellation, or an HTTP error.
 9. PR #20 verified the payload shape directly: correlated Haiku content frames include top-level `modelId` alongside `content`, while the correlated Opus content frame contains `content` only. Therefore the missing Opus model log is not a parser miss; the observed Opus response payload itself omitted the `modelId` field.
+10. PR #21 verified the AWS EventStream headers on correlated Opus request `[834d349a:000003]`: content frames are standard `assistantResponseEvent` frames and the later frames are `contextUsageEvent` / `meteringEvent`; the observed frame headers contain no model or routing identifier.
 
-The current unresolved question is now narrower: why does the successful direct Opus response omit the `modelId` field entirely while the neighboring direct Haiku response includes `modelId=claude-haiku-4.5` on its content frames?
+The current unresolved question is now narrower: what, if any, backend-observable metadata outside the response event-stream identifies the concrete routed/served model for a direct `claude-opus-5` request?
 
-PR #20 ruled out a payload parser miss by logging only frame field names. The next useful instrumentation is to inspect AWS event-stream header metadata for those same correlated response frames, without changing request behavior or logging generated content.
+PR #20 ruled out a payload parser miss, and PR #21 ruled out model/routing metadata in the observed AWS EventStream headers. The next useful observation point is outside the event-stream body, such as HTTP response headers, while keeping request behavior unchanged.
 
 ## Standard probe
 
