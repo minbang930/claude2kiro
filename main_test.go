@@ -93,6 +93,28 @@ func TestGetKiroModelID(t *testing.T) {
 // resolves the common current ids offline (catalog unreachable), and that
 // unknown ids pass through as a best-effort candidate rather than being
 // substituted for a different model.
+func TestMessageBlockSummaryDistinguishesBlockShape(t *testing.T) {
+	textA := "alpha"
+	textB := "beta"
+	a := []AnthropicRequestMessage{
+		{Role: "user", Content: []any{map[string]any{"type": "text", "text": textA}}},
+	}
+	b := []AnthropicRequestMessage{
+		{Role: "user", Content: []any{
+			map[string]any{"type": "text", "text": textA},
+			map[string]any{"type": "text", "text": textB},
+		}},
+	}
+	summaryA := messageBlockSummary(a)
+	summaryB := messageBlockSummary(b)
+	if summaryA == summaryB {
+		t.Fatalf("different block shapes should produce different summaries")
+	}
+	if !strings.Contains(summaryA, "m0 role=user") || !strings.Contains(summaryA, "0:text:") {
+		t.Fatalf("summary missing role/type metadata: %q", summaryA)
+	}
+}
+
 func TestComponentFingerprint(t *testing.T) {
 	a := map[string]any{"value": "same"}
 	b := map[string]any{"value": "different"}
