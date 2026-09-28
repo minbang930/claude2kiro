@@ -93,6 +93,49 @@ func TestGetKiroModelID(t *testing.T) {
 // resolves the common current ids offline (catalog unreachable), and that
 // unknown ids pass through as a best-effort candidate rather than being
 // substituted for a different model.
+func TestRequestWireFingerprintIgnoresRoutingIDs(t *testing.T) {
+	var a CodeWhispererRequest
+	a.ConversationState.ConversationId = "conversation-a"
+	a.ConversationState.CurrentMessage.UserInputMessage.ModelId = "claude-opus-5"
+	a.ConversationState.CurrentMessage.UserInputMessage.Content = "same content"
+	a.ConversationState.History = []any{
+		map[string]any{
+			"userInputMessage": map[string]any{
+				"content": "prior",
+				"modelId": "claude-opus-5",
+			},
+		},
+	}
+	a.AdditionalModelRequestFields = &AdditionalModelRequestFields{
+		OutputConfig: &OutputConfig{Effort: "low"},
+	}
+
+	var b CodeWhispererRequest
+	b.ConversationState.ConversationId = "conversation-b"
+	b.ConversationState.CurrentMessage.UserInputMessage.ModelId = "claude-opus-5.5"
+	b.ConversationState.CurrentMessage.UserInputMessage.Content = "same content"
+	b.ConversationState.History = []any{
+		map[string]any{
+			"userInputMessage": map[string]any{
+				"content": "prior",
+				"modelId": "claude-opus-5.5",
+			},
+		},
+	}
+	b.AdditionalModelRequestFields = &AdditionalModelRequestFields{
+		OutputConfig: &OutputConfig{Effort: "low"},
+	}
+
+	if gotA, gotB := requestWireFingerprint(a), requestWireFingerprint(b); gotA == "" || gotA != gotB {
+		t.Fatalf("routing-only changes should keep fingerprint equal: %q vs %q", gotA, gotB)
+	}
+
+	b.AdditionalModelRequestFields.OutputConfig.Effort = "medium"
+	if gotA, gotB := requestWireFingerprint(a), requestWireFingerprint(b); gotA == gotB {
+		t.Fatalf("non-routing request change should alter fingerprint: %q", gotA)
+	}
+}
+
 func TestResolveNativeEffort(t *testing.T) {
 	cases := []struct {
 		name      string

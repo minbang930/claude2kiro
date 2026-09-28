@@ -1807,6 +1807,45 @@ func formatMeteringUsage(events []parser.MeteringEvent) string {
 	return fmt.Sprintf("Kiro metering: %.6g credits across %d events", total, len(events))
 }
 
+// requestWireFingerprint hashes the outgoing CodeWhisperer JSON after removing
+// request-routing identifiers that are expected to differ between controlled
+// runs. A matching fingerprint means every other serialized request field is
+// byte-equivalent after canonical JSON marshaling.
+func requestWireFingerprint(cwReq CodeWhispererRequest) string {
+	body, err := json.Marshal(cwReq)
+	if err != nil {
+		return ""
+	}
+	var value any
+	if err := json.Unmarshal(body, &value); err != nil {
+		return ""
+	}
+	scrubRequestRoutingFields(value)
+	canonical, err := json.Marshal(value)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(canonical)
+	return hex.EncodeToString(sum[:8])
+}
+
+func scrubRequestRoutingFields(value any) {
+	switch v := value.(type) {
+	case map[string]any:
+		for key, child := range v {
+			if key == "modelId" || key == "conversationId" {
+				v[key] = "<ignored>"
+				continue
+			}
+			scrubRequestRoutingFields(child)
+		}
+	case []any:
+		for _, child := range v {
+			scrubRequestRoutingFields(child)
+		}
+	}
+}
+
 func requestMetricsSummary(cwReq CodeWhispererRequest, reqBytes int, cfg *config.Config) string {
 	advanced := config.Default().Advanced
 	if cfg != nil {
@@ -4536,6 +4575,9 @@ func handleStreamRequestWithLogger(w http.ResponseWriter, anthropicReq Anthropic
 
 	// Log request metrics for benchmark comparisons.
 	lg.LogInfo(requestMetricsSummary(cwReq, len(cwReqBody), cfg))
+	if fingerprint := requestWireFingerprint(cwReq); fingerprint != "" {
+		lg.LogInfo(fmt.Sprintf("Request wire fingerprint: [%s:%s] %s (ignores modelId,conversationId)", sessionID, requestID, fingerprint))
+	}
 
 	// Create streaming request
 	var proxyReq *http.Request
@@ -7231,6 +7273,9 @@ func handleNonStreamRequest(w http.ResponseWriter, anthropicReq AnthropicRequest
 	}
 	if lg != nil {
 		lg.LogInfo(requestMetricsSummary(cwReq, len(cwReqBody), config.Get()))
+		if fingerprint := requestWireFingerprint(cwReq); fingerprint != "" {
+			lg.LogInfo(fmt.Sprintf("Request wire fingerprint: [%s:%s] %s (ignores modelId,conversationId)", sessionID, requestID, fingerprint))
+		}
 	}
 
 	// Create request
