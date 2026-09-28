@@ -2020,7 +2020,9 @@ func buildCodeWhispererRequest(anthropicReq AnthropicRequest, token TokenData) C
 		toolMode = "full"
 	}
 	cwReq.ConversationState.ChatTriggerType = "MANUAL"
-	cwReq.ConversationState.AgentTaskType = "vibe"
+	// Experiment: omit agentTaskType to test whether Kiro's provider-side
+	// "vibe" agent context is what overrides Claude Code identity instructions.
+	cwReq.ConversationState.AgentTaskType = ""
 	// conversationId selection.
 	//
 	// By default, derive a stable conversationId from Claude Code's per-session
