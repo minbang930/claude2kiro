@@ -2011,6 +2011,13 @@ func buildCodeWhispererRequest(anthropicReq AnthropicRequest, token TokenData) C
 	}
 	cfg := config.Get()
 	kiroModel := getKiroModelID(anthropicReq.Model)
+	// Experiment: isolate backend model selection while preserving the original
+	// AI_EDITOR + vibe request metadata. Claude Desktop still selects Opus 5.5,
+	// but only that request is sent to Kiro with modelId "auto".
+	if strings.EqualFold(anthropicReq.Model, "claude-opus-5-5") ||
+		strings.EqualFold(anthropicReq.Model, "claude-opus-5.5") {
+		kiroModel = "auto"
+	}
 	historyMode := cfg.Advanced.HistoryMode
 	if historyMode == "" {
 		historyMode = "full"
