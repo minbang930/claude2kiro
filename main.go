@@ -2010,7 +2010,7 @@ func buildCodeWhispererRequest(anthropicReq AnthropicRequest, token TokenData) C
 		cwReq.ProfileArn = ""
 	}
 	cfg := config.Get()
-	kiroModel := getKiroModelID(anthropicReq.Model)
+	kiroModel := "auto" // experiment: force backend auto model while Desktop still reports its selected model
 	historyMode := cfg.Advanced.HistoryMode
 	if historyMode == "" {
 		historyMode = "full"
