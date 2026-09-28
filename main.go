@@ -1825,6 +1825,71 @@ func textComponentFingerprint(value string) string {
 	return fmt.Sprintf("%s/%d", hex.EncodeToString(sum[:8]), len(value))
 }
 
+var (
+	systemRoleDeltaMu   sync.Mutex
+	lastOpusSystemRole  string
+)
+
+func scalarSystemRoleMessage(messages []AnthropicRequestMessage) string {
+	for _, msg := range messages {
+		if !strings.EqualFold(msg.Role, "system") {
+			continue
+		}
+		if text, ok := msg.Content.(string); ok {
+			return text
+		}
+	}
+	return ""
+}
+
+func commonPrefixSuffixBytes(previous, current string) (int, int) {
+	limit := min(len(previous), len(current))
+	prefix := 0
+	for prefix < limit && previous[prefix] == current[prefix] {
+		prefix++
+	}
+
+	suffixLimit := limit - prefix
+	suffix := 0
+	for suffix < suffixLimit &&
+		previous[len(previous)-1-suffix] == current[len(current)-1-suffix] {
+		suffix++
+	}
+	return prefix, suffix
+}
+
+func systemRoleDeltaSummary(model string, messages []AnthropicRequestMessage) string {
+	if !strings.EqualFold(model, "claude-opus-5") {
+		return ""
+	}
+	current := scalarSystemRoleMessage(messages)
+	if current == "" {
+		return ""
+	}
+
+	systemRoleDeltaMu.Lock()
+	defer systemRoleDeltaMu.Unlock()
+
+	previous := lastOpusSystemRole
+	lastOpusSystemRole = current
+	if previous == "" {
+		return fmt.Sprintf("System-role delta: baselineLen=%d baselineHash=%s", len(current), textComponentFingerprint(current))
+	}
+
+	prefix, suffix := commonPrefixSuffixBytes(previous, current)
+	previousMiddle := previous[prefix : len(previous)-suffix]
+	currentMiddle := current[prefix : len(current)-suffix]
+	return fmt.Sprintf(
+		"System-role delta: previousLen=%d currentLen=%d commonPrefix=%d commonSuffix=%d previousMiddle=%s currentMiddle=%s",
+		len(previous),
+		len(current),
+		prefix,
+		suffix,
+		textComponentFingerprint(previousMiddle),
+		textComponentFingerprint(currentMiddle),
+	)
+}
+
 func messageBlockSummary(messages []AnthropicRequestMessage) string {
 	var messageParts []string
 	for i, msg := range messages {
@@ -4696,6 +4761,9 @@ func handleStreamRequestWithLogger(w http.ResponseWriter, anthropicReq Anthropic
 	lg.LogInfo(requestMetricsSummary(cwReq, len(cwReqBody), cfg))
 	lg.LogInfo(fmt.Sprintf("%s [%s:%s]", requestComponentSummary(anthropicReq, cwReq), sessionID, requestID))
 	lg.LogInfo(fmt.Sprintf("%s [%s:%s]", messageBlockSummary(anthropicReq.Messages), sessionID, requestID))
+	if delta := systemRoleDeltaSummary(anthropicReq.Model, anthropicReq.Messages); delta != "" {
+		lg.LogInfo(fmt.Sprintf("%s [%s:%s]", delta, sessionID, requestID))
+	}
 	if fingerprint := requestWireFingerprint(cwReq); fingerprint != "" {
 		lg.LogInfo(fmt.Sprintf("Request wire fingerprint: [%s:%s] %s (ignores modelId,conversationId)", sessionID, requestID, fingerprint))
 	}
@@ -7404,6 +7472,9 @@ func handleNonStreamRequest(w http.ResponseWriter, anthropicReq AnthropicRequest
 		lg.LogInfo(requestMetricsSummary(cwReq, len(cwReqBody), config.Get()))
 		lg.LogInfo(fmt.Sprintf("%s [%s:%s]", requestComponentSummary(anthropicReq, cwReq), sessionID, requestID))
 		lg.LogInfo(fmt.Sprintf("%s [%s:%s]", messageBlockSummary(anthropicReq.Messages), sessionID, requestID))
+		if delta := systemRoleDeltaSummary(anthropicReq.Model, anthropicReq.Messages); delta != "" {
+			lg.LogInfo(fmt.Sprintf("%s [%s:%s]", delta, sessionID, requestID))
+		}
 		if fingerprint := requestWireFingerprint(cwReq); fingerprint != "" {
 			lg.LogInfo(fmt.Sprintf("Request wire fingerprint: [%s:%s] %s (ignores modelId,conversationId)", sessionID, requestID, fingerprint))
 		}
