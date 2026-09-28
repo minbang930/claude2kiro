@@ -1811,6 +1811,50 @@ func formatMeteringUsage(events []parser.MeteringEvent) string {
 // request-routing identifiers that are expected to differ between controlled
 // runs. A matching fingerprint means every other serialized request field is
 // byte-equivalent after canonical JSON marshaling.
+func componentFingerprint(value any) string {
+	body, err := json.Marshal(value)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(body)
+	return fmt.Sprintf("%s/%d", hex.EncodeToString(sum[:8]), len(body))
+}
+
+func textComponentFingerprint(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return fmt.Sprintf("%s/%d", hex.EncodeToString(sum[:8]), len(value))
+}
+
+func requestComponentSummary(anthropicReq AnthropicRequest, cwReq CodeWhispererRequest) string {
+	current := cwReq.ConversationState.CurrentMessage.UserInputMessage
+	controls := struct {
+		MaxTokens    int                    `json:"max_tokens"`
+		Stream       bool                   `json:"stream"`
+		Temperature  *float64               `json:"temperature,omitempty"`
+		Thinking     *AnthropicThinking     `json:"thinking,omitempty"`
+		OutputConfig *AnthropicOutputConfig `json:"output_config,omitempty"`
+	}{
+		MaxTokens:    anthropicReq.MaxTokens,
+		Stream:       anthropicReq.Stream,
+		Temperature:  anthropicReq.Temperature,
+		Thinking:     anthropicReq.Thinking,
+		OutputConfig: anthropicReq.OutputConfig,
+	}
+	return fmt.Sprintf(
+		"Request components: inSystem=%s inMessages=%s inTools=%s inMetadata=%s inControls=%s cwContent=%s cwContext=%s cwHistory=%s cwAdditional=%s cwProfile=%s",
+		componentFingerprint(anthropicReq.System),
+		componentFingerprint(anthropicReq.Messages),
+		componentFingerprint(anthropicReq.Tools),
+		componentFingerprint(anthropicReq.Metadata),
+		componentFingerprint(controls),
+		textComponentFingerprint(current.Content),
+		componentFingerprint(current.UserInputMessageContext),
+		componentFingerprint(cwReq.ConversationState.History),
+		componentFingerprint(cwReq.AdditionalModelRequestFields),
+		componentFingerprint(cwReq.ProfileArn),
+	)
+}
+
 func accessTokenFingerprint(token string) string {
 	if token == "" {
 		return ""
@@ -4605,6 +4649,7 @@ func handleStreamRequestWithLogger(w http.ResponseWriter, anthropicReq Anthropic
 
 	// Log request metrics for benchmark comparisons.
 	lg.LogInfo(requestMetricsSummary(cwReq, len(cwReqBody), cfg))
+	lg.LogInfo(fmt.Sprintf("%s [%s:%s]", requestComponentSummary(anthropicReq, cwReq), sessionID, requestID))
 	if fingerprint := requestWireFingerprint(cwReq); fingerprint != "" {
 		lg.LogInfo(fmt.Sprintf("Request wire fingerprint: [%s:%s] %s (ignores modelId,conversationId)", sessionID, requestID, fingerprint))
 	}
@@ -7311,6 +7356,7 @@ func handleNonStreamRequest(w http.ResponseWriter, anthropicReq AnthropicRequest
 	}
 	if lg != nil {
 		lg.LogInfo(requestMetricsSummary(cwReq, len(cwReqBody), config.Get()))
+		lg.LogInfo(fmt.Sprintf("%s [%s:%s]", requestComponentSummary(anthropicReq, cwReq), sessionID, requestID))
 		if fingerprint := requestWireFingerprint(cwReq); fingerprint != "" {
 			lg.LogInfo(fmt.Sprintf("Request wire fingerprint: [%s:%s] %s (ignores modelId,conversationId)", sessionID, requestID, fingerprint))
 		}
