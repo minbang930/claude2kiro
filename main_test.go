@@ -93,6 +93,20 @@ func TestGetKiroModelID(t *testing.T) {
 // resolves the common current ids offline (catalog unreachable), and that
 // unknown ids pass through as a best-effort candidate rather than being
 // substituted for a different model.
+func TestComponentFingerprint(t *testing.T) {
+	a := map[string]any{"value": "same"}
+	b := map[string]any{"value": "different"}
+	if got := componentFingerprint(a); got == "" || got != componentFingerprint(a) {
+		t.Fatalf("component fingerprint should be stable: %q", got)
+	}
+	if componentFingerprint(a) == componentFingerprint(b) {
+		t.Fatalf("different component values should have different fingerprints")
+	}
+	if textComponentFingerprint("abc") == textComponentFingerprint("abcd") {
+		t.Fatalf("different text should have different fingerprints")
+	}
+}
+
 func TestAccessTokenFingerprint(t *testing.T) {
 	if got := accessTokenFingerprint(""); got != "" {
 		t.Fatalf("empty token fingerprint = %q, want empty", got)
