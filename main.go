@@ -2011,9 +2011,9 @@ func buildCodeWhispererRequest(anthropicReq AnthropicRequest, token TokenData) C
 	}
 	cfg := config.Get()
 	kiroModel := getKiroModelID(anthropicReq.Model)
-	// Experiment: isolate backend model selection while preserving the original
-	// AI_EDITOR + vibe request metadata. Claude Desktop still selects Opus 5.5,
-	// but only that request is sent to Kiro with modelId "auto".
+	// Experiment: isolate whether the identity shift came from the concrete model
+	// chosen by auto routing or from the auto route itself. Claude Desktop still
+	// selects Opus 5.5, but that request is sent directly as claude-haiku-4.5.
 	if strings.EqualFold(anthropicReq.Model, "claude-opus-5-5") ||
 		strings.EqualFold(anthropicReq.Model, "claude-opus-5.5") {
 		kiroModel = "claude-haiku-4.5"
