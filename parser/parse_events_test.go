@@ -188,14 +188,29 @@ func encodedHeaders(pairs ...string) []byte {
 	return b.Bytes()
 }
 
+func buildEventStreamFrame(header []byte, jsonPayload string) []byte {
+	payload := []byte(jsonPayload)
+	headerLen := uint32(len(header))
+	totalLen := uint32(16 + len(header) + len(payload))
+
+	var b bytes.Buffer
+	binary.Write(&b, binary.BigEndian, totalLen)
+	binary.Write(&b, binary.BigEndian, headerLen)
+	binary.Write(&b, binary.BigEndian, uint32(0)) // prelude CRC (not validated here)
+	b.Write(header)
+	b.Write(payload)
+	binary.Write(&b, binary.BigEndian, uint32(0)) // message CRC (not validated here)
+	return b.Bytes()
+}
+
 func TestSummarizeResponseFrameHeaders(t *testing.T) {
 	var all []byte
-	all = append(all, buildFrame(encodedHeaders(
+	all = append(all, buildEventStreamFrame(encodedHeaders(
 		":event-type", "assistantResponseEvent",
 		":content-type", "application/json",
 		":message-type", "event",
 	), `{"content":"Hello"}`)...)
-	all = append(all, buildFrame(encodedHeaders(
+	all = append(all, buildEventStreamFrame(encodedHeaders(
 		":event-type", "meteringEvent",
 		":content-type", "application/json",
 		":message-type", "event",
