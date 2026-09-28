@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -183,6 +185,37 @@ func TestComponentFingerprint(t *testing.T) {
 	}
 	if textComponentFingerprint("abc") == textComponentFingerprint("abcd") {
 		t.Fatalf("different text should have different fingerprints")
+	}
+}
+
+func TestBackendTransportSummaryKeepsConnectionID(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	backendConnMu.Lock()
+	backendConnIDs = map[net.Conn]int{}
+	nextBackendConnID = 0
+	backendConnMu.Unlock()
+	t.Cleanup(func() {
+		backendConnMu.Lock()
+		backendConnIDs = map[net.Conn]int{}
+		nextBackendConnID = 0
+		backendConnMu.Unlock()
+	})
+
+	first := backendTransportSummary(httptrace.GotConnInfo{Conn: clientConn})
+	second := backendTransportSummary(httptrace.GotConnInfo{
+		Conn:     clientConn,
+		Reused:   true,
+		WasIdle:  true,
+		IdleTime: 5 * time.Millisecond,
+	})
+	if !strings.Contains(first, "conn=1") || !strings.Contains(second, "conn=1") {
+		t.Fatalf("same connection should keep id: first=%q second=%q", first, second)
+	}
+	if !strings.Contains(second, "reused=true") || !strings.Contains(second, "wasIdle=true") {
+		t.Fatalf("reuse flags missing: %q", second)
 	}
 }
 
