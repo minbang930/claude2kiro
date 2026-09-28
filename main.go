@@ -2042,7 +2042,35 @@ func buildCodeWhispererRequest(anthropicReq AnthropicRequest, token TokenData) C
 		cwReq.ConversationState.CurrentMessage.UserInputMessage.UserInputMessageContext.EnvState = envState
 	}
 
-	cwReq.ConversationState.CurrentMessage.UserInputMessage.Content = getMessageContentForToolMode(anthropicReq.Messages[len(anthropicReq.Messages)-1].Content, toolMode)
+	// Claude Desktop may append one or more role:"system" turns after the actual
+	// user turn (for example SessionStart hook output). Keep the real user turn
+	// as CodeWhisperer's currentMessage and fold only that contiguous trailing
+	// system tail into the same content so it is not mistaken for the user's
+	// request or silently dropped.
+	currentMsgIdx := len(anthropicReq.Messages) - 1
+	if anthropicReq.Messages[currentMsgIdx].Role == "system" {
+		i := currentMsgIdx
+		for i >= 0 && anthropicReq.Messages[i].Role == "system" {
+			i--
+		}
+		if i >= 0 && anthropicReq.Messages[i].Role == "user" {
+			currentMsgIdx = i
+		}
+	}
+	currentMsg := anthropicReq.Messages[currentMsgIdx]
+	currentContent := getMessageContentForToolMode(currentMsg.Content, toolMode)
+	for i := currentMsgIdx + 1; i < len(anthropicReq.Messages); i++ {
+		trailingSystem := getMessageContentForToolMode(anthropicReq.Messages[i].Content, toolMode)
+		if trailingSystem == "" {
+			continue
+		}
+		if currentContent != "" {
+			currentContent += "\n\n"
+		}
+		currentContent += "<system-reminder>\n" + trailingSystem + "\n</system-reminder>"
+	}
+
+	cwReq.ConversationState.CurrentMessage.UserInputMessage.Content = currentContent
 	cwReq.ConversationState.CurrentMessage.UserInputMessage.ModelId = kiroModel
 	cwReq.ConversationState.CurrentMessage.UserInputMessage.Origin = "AI_EDITOR"
 	// Process tools information
@@ -2101,21 +2129,17 @@ func buildCodeWhispererRequest(anthropicReq AnthropicRequest, token TokenData) C
 		cwReq.ConversationState.CurrentMessage.UserInputMessage.UserInputMessageContext.Tools = tools
 	}
 
-	// Extract images and tool_results from the current message
+	// Extract images and tool_results from the actual current user message.
 	var currentToolResults []ToolResult
-	if len(anthropicReq.Messages) > 0 {
-		lastMsg := anthropicReq.Messages[len(anthropicReq.Messages)-1]
-		images := extractImagesFromContent(lastMsg.Content)
-		if len(images) > 0 {
-			cwReq.ConversationState.CurrentMessage.UserInputMessage.Images = images
-		}
-		// If the current message contains tool_result blocks, extract them
-		if toolMode != "none_text" {
-			toolResults := getMessageToolResults(lastMsg.Content)
-			if len(toolResults) > 0 {
-				currentToolResults = toolResults
-				cwReq.ConversationState.CurrentMessage.UserInputMessage.UserInputMessageContext.ToolResults = toolResults
-			}
+	images := extractImagesFromContent(currentMsg.Content)
+	if len(images) > 0 {
+		cwReq.ConversationState.CurrentMessage.UserInputMessage.Images = images
+	}
+	if toolMode != "none_text" {
+		toolResults := getMessageToolResults(currentMsg.Content)
+		if len(toolResults) > 0 {
+			currentToolResults = toolResults
+			cwReq.ConversationState.CurrentMessage.UserInputMessage.UserInputMessageContext.ToolResults = toolResults
 		}
 	}
 
@@ -2176,8 +2200,9 @@ func buildCodeWhispererRequest(anthropicReq AnthropicRequest, token TokenData) C
 			lastRole = role
 		}
 
-		// All messages except the last one (the last is the current message).
-		for i := 0; i < len(anthropicReq.Messages)-1; i++ {
+		// Messages before the actual current user turn are history. A contiguous
+		// trailing system tail has already been folded into currentContent above.
+		for i := 0; i < currentMsgIdx; i++ {
 			msg := anthropicReq.Messages[i]
 
 			if msg.Role == "assistant" {
