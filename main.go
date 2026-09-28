@@ -4795,6 +4795,9 @@ func handleStreamRequestWithLogger(w http.ResponseWriter, anthropicReq Anthropic
 	if fields := parser.SummarizeResponseFrameFields(respBody); len(fields) > 0 {
 		lg.LogInfo(fmt.Sprintf("Backend response frame fields: [%s:%s] %s", sessionID, requestID, strings.Join(fields, " ")))
 	}
+	if headers := parser.SummarizeResponseFrameHeaders(respBody); len(headers) > 0 {
+		lg.LogInfo(fmt.Sprintf("Backend response frame headers: [%s:%s] %s", sessionID, requestID, strings.Join(headers, " ")))
+	}
 
 	// Use CodeWhisperer parser
 	events := parser.ParseEvents(respBody)
@@ -7409,6 +7412,9 @@ func handleNonStreamRequest(w http.ResponseWriter, anthropicReq AnthropicRequest
 	}
 	if fields := parser.SummarizeResponseFrameFields(cwRespBody); len(fields) > 0 && lg != nil {
 		lg.LogInfo(fmt.Sprintf("Backend response frame fields: [%s:%s] %s", sessionID, requestID, strings.Join(fields, " ")))
+	}
+	if headers := parser.SummarizeResponseFrameHeaders(cwRespBody); len(headers) > 0 && lg != nil {
+		lg.LogInfo(fmt.Sprintf("Backend response frame headers: [%s:%s] %s", sessionID, requestID, strings.Join(headers, " ")))
 	}
 	events := parser.ParseEvents(cwRespBody)
 	if usageMsg := formatMeteringUsage(parser.ParseMeteringEvents(cwRespBody)); usageMsg != "" && lg != nil {
