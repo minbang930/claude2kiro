@@ -94,6 +94,27 @@ func TestGetKiroModelID(t *testing.T) {
 // resolves the common current ids offline (catalog unreachable), and that
 // unknown ids pass through as a best-effort candidate rather than being
 // substituted for a different model.
+func TestCommonPrefixSuffixBytes(t *testing.T) {
+	prefix, suffix := commonPrefixSuffixBytes("abcXYZdef", "abc123def")
+	if prefix != 3 || suffix != 3 {
+		t.Fatalf("prefix/suffix = %d/%d, want 3/3", prefix, suffix)
+	}
+	prefix, suffix = commonPrefixSuffixBytes("same", "same")
+	if prefix != 4 || suffix != 0 {
+		t.Fatalf("identical prefix/suffix = %d/%d, want 4/0", prefix, suffix)
+	}
+}
+
+func TestScalarSystemRoleMessage(t *testing.T) {
+	messages := []AnthropicRequestMessage{
+		{Role: "user", Content: "hello"},
+		{Role: "system", Content: "system payload"},
+	}
+	if got := scalarSystemRoleMessage(messages); got != "system payload" {
+		t.Fatalf("scalar system message = %q", got)
+	}
+}
+
 func TestMessageBlockSummaryDistinguishesBlockShape(t *testing.T) {
 	textA := "alpha"
 	textB := "beta"
