@@ -60,6 +60,7 @@ The experiments are intentionally split into draft PRs. Do not merge an experime
 | #13 | `experiment/fixed-opus-5` | direct `claude-opus-5` control | Claude Code, while backend response still reported `claude-haiku-4.5` |
 | #14 | `experiment/log-requested-sent-served` | instrumentation only: log incoming model and model actually sent; keep response model logging | live log showed `incoming=claude-opus-5 sent=claude-opus-5`, followed ~0.5s later by backend-reported `claude-haiku-4.5`; however a concurrent Haiku request was also in flight, so the response line is not yet uniquely paired |
 | #18 | `experiment/correlate-model-route` | instrumentation only: add the same `[session:request]` key to sent-model and response-model logs | live log paired Haiku `[9361248f:000003]` with backend-reported `claude-haiku-4.5`. Concurrent Opus `[6bb8d99d:000004]` was sent as `claude-opus-5` and completed `200` in 2.758s with response text `Claude Code`, but emitted no response-model line. Because response-model parsing runs before metering/parser/RES logging, this means `ParseResponseModelIDs` returned empty for that successful Opus response body |
+| #20 | `experiment/log-response-frame-fields` | instrumentation only: log top-level JSON field names for each successful response frame; no field values | live correlated run showed Haiku `[a0ad19de:000003]` content frames had `{content,modelId}` and reported `claude-haiku-4.5`; Opus `[87a4b54e:000004]` content frame had only `{content}`, followed by `{contextUsagePercentage}` and metering. Thus the successful Opus wire payload omitted the `modelId` key itself |
 
 Important interpretation rule:
 
@@ -78,10 +79,11 @@ The strongest evidence so far is:
 6. PR #18 correlated the previously ambiguous Haiku response to the separate Haiku request: `[9361248f:000003]` was sent as Haiku and its response reported `claude-haiku-4.5` with the same key.
 7. The concurrent Opus request `[6bb8d99d:000004]` was sent as `claude-opus-5`, completed successfully with HTTP 200 in 2.758s, and returned `Claude Code` to Claude Desktop.
 8. That successful Opus response produced metering and parsed events but no `Backend response model(s)` line. In the current code, response-model extraction runs before those later logs, so `ParseResponseModelIDs` returned no model ID for that response body. The absence is not explained by truncation, delay, cancellation, or an HTTP error.
+9. PR #20 verified the payload shape directly: correlated Haiku content frames include top-level `modelId` alongside `content`, while the correlated Opus content frame contains `content` only. Therefore the missing Opus model log is not a parser miss; the observed Opus response payload itself omitted the `modelId` field.
 
-The current unresolved question is now narrower: why does the successful direct Opus response omit any model ID recognized by `ParseResponseModelIDs`, while the neighboring direct Haiku response includes `assistantResponseEvent.modelId=claude-haiku-4.5`?
+The current unresolved question is now narrower: why does the successful direct Opus response omit the `modelId` field entirely while the neighboring direct Haiku response includes `modelId=claude-haiku-4.5` on its content frames?
 
-PR #18 (`experiment/correlate-model-route`) ruled out the earlier false temporal pairing and also ruled out “late response”, cancellation, and HTTP failure for the observed Opus request. The next useful instrumentation should inspect the event types/fields in the successful Opus response without changing request behavior.
+PR #20 ruled out a payload parser miss by logging only frame field names. The next useful instrumentation is to inspect AWS event-stream header metadata for those same correlated response frames, without changing request behavior or logging generated content.
 
 ## Standard probe
 
