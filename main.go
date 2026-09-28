@@ -2070,6 +2070,26 @@ func buildCodeWhispererRequest(anthropicReq AnthropicRequest, token TokenData) C
 		currentContent += "<system-reminder>\n" + trailingSystem + "\n</system-reminder>"
 	}
 
+	// Kiro's GenerateAssistantResponse wire format has no Anthropic-style
+	// top-level system channel. Put Claude Code's exact system blocks at the
+	// front of the current user turn instead of demoting them into old history,
+	// where provider-side agent context can more easily overshadow them.
+	if len(anthropicReq.System) > 0 {
+		var systemParts []string
+		for _, sysMsg := range anthropicReq.System {
+			if strings.TrimSpace(sysMsg.Text) != "" {
+				systemParts = append(systemParts, sysMsg.Text)
+			}
+		}
+		if len(systemParts) > 0 {
+			systemContent := "<claude-code-system-instructions>\n" + strings.Join(systemParts, "\n\n") + "\n</claude-code-system-instructions>"
+			if currentContent != "" {
+				systemContent += "\n\n"
+			}
+			currentContent = systemContent + currentContent
+		}
+	}
+
 	cwReq.ConversationState.CurrentMessage.UserInputMessage.Content = currentContent
 	cwReq.ConversationState.CurrentMessage.UserInputMessage.ModelId = kiroModel
 	cwReq.ConversationState.CurrentMessage.UserInputMessage.Origin = "AI_EDITOR"
@@ -2143,27 +2163,15 @@ func buildCodeWhispererRequest(anthropicReq AnthropicRequest, token TokenData) C
 		}
 	}
 
-	// Build conversation history
-	// Process system messages or regular history messages
-	if len(anthropicReq.System) > 0 || len(anthropicReq.Messages) > 1 {
+	// Build conversation history. Anthropic system blocks are intentionally not
+	// synthesized as old user/assistant turns; they are carried in currentContent
+	// above so they stay adjacent to the request on every round-trip.
+	if len(anthropicReq.Messages) > 1 {
 		var history []any
-
-		// Add each system message as a separate history entry
 
 		assistantDefaultMsg := HistoryAssistantMessage{}
 		assistantDefaultMsg.AssistantResponseMessage.Content = getMessageContent("I will follow these instructions")
 		assistantDefaultMsg.AssistantResponseMessage.ToolUses = make([]any, 0)
-
-		if len(anthropicReq.System) > 0 {
-			for _, sysMsg := range anthropicReq.System {
-				userMsg := HistoryUserMessage{}
-				userMsg.UserInputMessage.Content = sysMsg.Text
-				userMsg.UserInputMessage.ModelId = kiroModel
-				userMsg.UserInputMessage.Origin = "AI_EDITOR"
-				history = append(history, userMsg)
-				history = append(history, assistantDefaultMsg)
-			}
-		}
 
 		// Process regular message history with full tool use/result support.
 		// Claude Code does NOT guarantee strict user/assistant alternation: it may
@@ -2184,9 +2192,6 @@ func buildCodeWhispererRequest(anthropicReq AnthropicRequest, token TokenData) C
 		defaultUserMsg.UserInputMessage.Origin = "AI_EDITOR"
 
 		lastRole := ""
-		if len(history) > 0 {
-			lastRole = "assistant" // the system-array block above ends on an assistant turn
-		}
 		emit := func(role string, entry any) {
 			if lastRole == role {
 				// Keep user/assistant strictly alternating.
@@ -2241,8 +2246,7 @@ func buildCodeWhispererRequest(anthropicReq AnthropicRequest, token TokenData) C
 
 		cfgCopy := cfg.Advanced
 		cfgCopy.HistoryMode = historyMode
-		systemPrefix := 2 * len(anthropicReq.System) // user+assistant pair per system message
-		cwReq.ConversationState.History = applyHistoryModeWithToolResultProtection(history, cfgCopy, currentToolResults, systemPrefix)
+		cwReq.ConversationState.History = applyHistoryModeWithToolResultProtection(history, cfgCopy, currentToolResults, 0)
 	}
 
 	return cwReq
