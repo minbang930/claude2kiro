@@ -1807,7 +1807,6 @@ func formatMeteringUsage(events []parser.MeteringEvent) string {
 	return fmt.Sprintf("Kiro metering: %.6g credits across %d events", total, len(events))
 }
 
-
 func isWebToolName(name string) bool {
 	return name == "WebSearch" || name == "WebFetch"
 }
