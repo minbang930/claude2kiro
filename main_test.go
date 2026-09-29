@@ -254,7 +254,6 @@ func TestBuildAndRestoreToolNames(t *testing.T) {
 	}
 }
 
-
 func TestWebToolRoundTripSummary(t *testing.T) {
 	withStubCatalog(t, stubList())
 
