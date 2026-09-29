@@ -133,7 +133,7 @@ func invokeKiroNativeWebSearch(ctx context.Context, client *http.Client, endpoin
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 4 << 20))
 	if err != nil {
 		return nil, fmt.Errorf("read Kiro MCP response: %w", err)
 	}
