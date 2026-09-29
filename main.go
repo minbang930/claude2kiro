@@ -155,7 +155,9 @@ type RefreshResponse struct {
 
 // AnthropicTool represents the Anthropic API tool structure
 type AnthropicTool struct {
+	Type         string         `json:"type,omitempty"`
 	Name         string         `json:"name"`
+	MaxUses      int            `json:"max_uses,omitempty"`
 	Description  string         `json:"description"`
 	InputSchema  map[string]any `json:"input_schema"`
 	CacheControl map[string]any `json:"cache_control,omitempty"`
@@ -4082,6 +4084,17 @@ func buildServerMux(lg *logger.Logger) *http.ServeMux {
 				}
 				lg.LogResponseWithBody(resp.StatusCode, r.URL.Path, duration, preview, string(respBody), sessionID, fullUUID, reqResult.RequestID, reqResult.SeqNum)
 			}
+			return
+		}
+
+		// Claude Code implements its built-in WebSearch by making a small nested
+		// Messages request with Anthropic's server-side web_search tool. That tool
+		// has no input_schema and must not be forwarded to Kiro inference as a
+		// generic client tool. Route the observed pure server-tool shape through
+		// Kiro's native MCP web_search endpoint instead.
+		if isNativeWebSearchRequest(anthropicReq) {
+			status, preview := handleNativeWebSearchRequest(r.Context(), w, anthropicReq, token, lg, sessionID, reqResult.RequestID)
+			lg.LogResponse(status, r.URL.Path, time.Since(startTime), preview, sessionID, fullUUID, reqResult.RequestID, reqResult.SeqNum)
 			return
 		}
 
