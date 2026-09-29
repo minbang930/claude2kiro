@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -250,6 +251,69 @@ func TestBuildAndRestoreToolNames(t *testing.T) {
 	cb := events[0].Data.(map[string]any)["content_block"].(map[string]any)
 	if cb["name"] != long {
 		t.Errorf("restoreToolNames did not restore name: got %v, want %q", cb["name"], long)
+	}
+}
+
+
+func TestWebToolRoundTripSummary(t *testing.T) {
+	withStubCatalog(t, stubList())
+
+	const (
+		rawID     = "toolu_private_websearch_id"
+		rawQuery  = "오늘 주요 뉴스"
+		rawResult = "private search result payload"
+	)
+	req := AnthropicRequest{
+		Model:     "claude-opus-5",
+		MaxTokens: 256,
+		Stream:    true,
+		Messages: []AnthropicRequestMessage{
+			{Role: "user", Content: "search the web"},
+			{Role: "assistant", Content: []any{
+				map[string]any{
+					"type": "tool_use",
+					"id":   rawID,
+					"name": "WebSearch",
+					"input": map[string]any{
+						"query": rawQuery,
+					},
+				},
+			}},
+			{Role: "user", Content: []any{
+				map[string]any{
+					"type":        "tool_result",
+					"tool_use_id": rawID,
+					"content": []any{
+						map[string]any{"type": "text", "text": rawResult},
+					},
+				},
+			}},
+		},
+	}
+
+	cwReq := buildCodeWhispererRequest(req, TokenData{})
+	got := webToolRoundTripSummary(req, cwReq)
+
+	for _, want := range []string{
+		"WebSearch",
+		"input=object{query:string}",
+		"content=blocks[text/29]",
+		"status=success",
+		"matchedPrior=true",
+		"cwUses=[",
+		"cwResults=[current:WebSearch",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("summary missing %q: %s", want, got)
+		}
+	}
+	for _, secret := range []string{rawID, rawQuery, rawResult} {
+		if strings.Contains(got, secret) {
+			t.Errorf("summary leaked raw value %q: %s", secret, got)
+		}
+	}
+	if wantHash := shortToolUseID(rawID); !strings.Contains(got, "id="+wantHash) {
+		t.Errorf("summary missing hashed tool use id %q: %s", wantHash, got)
 	}
 }
 
