@@ -133,7 +133,7 @@ func invokeKiroNativeWebSearch(ctx context.Context, client *http.Client, endpoin
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 4 << 20))
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if err != nil {
 		return nil, fmt.Errorf("read Kiro MCP response: %w", err)
 	}
@@ -329,11 +329,11 @@ func writeNativeWebSearchStream(w http.ResponseWriter, model, toolUseID, query s
 	sendSSEEvent(w, flusher, "content_block_stop", map[string]any{"type": "content_block_stop", "index": 2}, nil)
 
 	sendSSEEvent(w, flusher, "message_delta", map[string]any{
-		"type": "message_delta",
+		"type":  "message_delta",
 		"delta": map[string]any{"stop_reason": "end_turn", "stop_sequence": nil},
 		"usage": map[string]any{
-			"input_tokens":  inputTokens,
-			"output_tokens": outputTokens,
+			"input_tokens":    inputTokens,
+			"output_tokens":   outputTokens,
 			"server_tool_use": map[string]any{"web_search_requests": 1},
 		},
 	}, nil)
@@ -345,7 +345,7 @@ func writeNativeWebSearchError(w http.ResponseWriter, status int, message string
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"type": "error",
+		"type":  "error",
 		"error": map[string]any{"type": "api_error", "message": message},
 	})
 }
