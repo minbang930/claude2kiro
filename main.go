@@ -1809,6 +1809,185 @@ func formatMeteringUsage(events []parser.MeteringEvent) string {
 	return fmt.Sprintf("Kiro metering: %.6g credits across %d events", total, len(events))
 }
 
+func isWebToolName(name string) bool {
+	return name == "WebSearch" || name == "WebFetch"
+}
+
+func shortToolUseID(id string) string {
+	if id == "" {
+		return "-"
+	}
+	sum := sha256.Sum256([]byte(id))
+	return hex.EncodeToString(sum[:])[:12]
+}
+
+func valueShape(v any) string {
+	switch x := v.(type) {
+	case nil:
+		return "null"
+	case string:
+		return "string"
+	case bool:
+		return "bool"
+	case float64, float32, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		return "number"
+	case []any:
+		return fmt.Sprintf("array[%d]", len(x))
+	case map[string]any:
+		keys := make([]string, 0, len(x))
+		for k := range x {
+			keys = append(keys, k)
+		}
+		slices.Sort(keys)
+		parts := make([]string, 0, len(keys))
+		for _, k := range keys {
+			parts = append(parts, k+":"+valueShape(x[k]))
+		}
+		return "object{" + strings.Join(parts, ",") + "}"
+	default:
+		return fmt.Sprintf("%T", v)
+	}
+}
+
+func toolResultContentShape(content any) string {
+	switch x := content.(type) {
+	case string:
+		return fmt.Sprintf("string/%d", len(x))
+	case []any:
+		parts := make([]string, 0, len(x))
+		for _, item := range x {
+			m, ok := item.(map[string]any)
+			if !ok {
+				parts = append(parts, valueShape(item))
+				continue
+			}
+			typ, _ := m["type"].(string)
+			if typ == "" {
+				typ = "object"
+			}
+			if text, ok := m["text"].(string); ok {
+				parts = append(parts, fmt.Sprintf("%s/%d", typ, len(text)))
+			} else {
+				parts = append(parts, typ)
+			}
+		}
+		return "blocks[" + strings.Join(parts, ",") + "]"
+	default:
+		return valueShape(content)
+	}
+}
+
+// webToolRoundTripSummary logs only structural metadata for WebSearch/WebFetch
+// round trips. It intentionally omits query strings, fetched content, result
+// text, raw tool-use ids, and arbitrary non-web tool names.
+func webToolRoundTripSummary(anthropicReq AnthropicRequest, cwReq CodeWhispererRequest) string {
+	webIDs := make(map[string]string)
+	var incomingUses []string
+	var incomingResults []string
+
+	for mi, msg := range anthropicReq.Messages {
+		blocks, ok := msg.Content.([]any)
+		if !ok {
+			continue
+		}
+		for _, block := range blocks {
+			m, ok := block.(map[string]any)
+			if !ok {
+				continue
+			}
+			switch typ, _ := m["type"].(string); typ {
+			case "tool_use":
+				name, _ := m["name"].(string)
+				if !isWebToolName(name) {
+					continue
+				}
+				id, _ := m["id"].(string)
+				webIDs[id] = name
+				incomingUses = append(incomingUses, fmt.Sprintf(
+					"m%d:%s id=%s input=%s",
+					mi, name, shortToolUseID(id), valueShape(m["input"]),
+				))
+			case "tool_result":
+				id, _ := m["tool_use_id"].(string)
+				name, ok := webIDs[id]
+				if !ok {
+					continue
+				}
+				isErr, _ := m["is_error"].(bool)
+				incomingResults = append(incomingResults, fmt.Sprintf(
+					"m%d:%s id=%s error=%t content=%s",
+					mi, name, shortToolUseID(id), isErr, toolResultContentShape(m["content"]),
+				))
+			}
+		}
+	}
+
+	if len(incomingUses) == 0 && len(incomingResults) == 0 {
+		return ""
+	}
+
+	cwWebIDs := make(map[string]string)
+	var cwUses []string
+	var cwResults []string
+	for hi, raw := range cwReq.ConversationState.History {
+		switch entry := raw.(type) {
+		case HistoryAssistantMessage:
+			for _, rawUse := range entry.AssistantResponseMessage.ToolUses {
+				use, ok := rawUse.(HistoryToolUse)
+				if !ok || !isWebToolName(use.Name) {
+					continue
+				}
+				cwWebIDs[use.ToolUseId] = use.Name
+				cwUses = append(cwUses, fmt.Sprintf(
+					"h%d:%s id=%s input=%s",
+					hi, use.Name, shortToolUseID(use.ToolUseId), valueShape(use.Input),
+				))
+			}
+		case HistoryUserMessage:
+			if entry.UserInputMessage.UserInputMessageContext == nil {
+				continue
+			}
+			for _, result := range entry.UserInputMessage.UserInputMessageContext.ToolResults {
+				name, matched := cwWebIDs[result.ToolUseId]
+				if !matched {
+					continue
+				}
+				textBytes := 0
+				for _, item := range result.Content {
+					textBytes += len(item.Text)
+				}
+				cwResults = append(cwResults, fmt.Sprintf(
+					"h%d:%s id=%s status=%s items=%d textBytes=%d matchedPrior=%t",
+					hi, name, shortToolUseID(result.ToolUseId), result.Status, len(result.Content), textBytes, matched,
+				))
+			}
+		}
+	}
+
+	for _, result := range cwReq.ConversationState.CurrentMessage.UserInputMessage.UserInputMessageContext.ToolResults {
+		name, matched := cwWebIDs[result.ToolUseId]
+		if !matched {
+			continue
+		}
+		textBytes := 0
+		for _, item := range result.Content {
+			textBytes += len(item.Text)
+		}
+		cwResults = append(cwResults, fmt.Sprintf(
+			"current:%s id=%s status=%s items=%d textBytes=%d matchedPrior=%t",
+			name, shortToolUseID(result.ToolUseId), result.Status, len(result.Content), textBytes, matched,
+		))
+	}
+
+	return fmt.Sprintf(
+		"inUses=[%s] inResults=[%s] cwUses=[%s] cwResults=[%s]",
+		strings.Join(incomingUses, "; "),
+		strings.Join(incomingResults, "; "),
+		strings.Join(cwUses, "; "),
+		strings.Join(cwResults, "; "),
+	)
+}
+
 func requestMetricsSummary(cwReq CodeWhispererRequest, reqBytes int, cfg *config.Config) string {
 	advanced := config.Default().Advanced
 	if cfg != nil {
@@ -4537,6 +4716,9 @@ func handleStreamRequestWithLogger(w http.ResponseWriter, anthropicReq Anthropic
 
 	// Log request metrics for benchmark comparisons.
 	lg.LogInfo(requestMetricsSummary(cwReq, len(cwReqBody), cfg))
+	if summary := webToolRoundTripSummary(anthropicReq, cwReq); summary != "" {
+		lg.LogInfo(fmt.Sprintf("Web tool roundtrip: [%s:%s] %s", sessionID, requestID, summary))
+	}
 
 	// Create streaming request
 	var proxyReq *http.Request
@@ -7213,6 +7395,9 @@ func handleNonStreamRequest(w http.ResponseWriter, anthropicReq AnthropicRequest
 	}
 	if lg != nil {
 		lg.LogInfo(requestMetricsSummary(cwReq, len(cwReqBody), config.Get()))
+		if summary := webToolRoundTripSummary(anthropicReq, cwReq); summary != "" {
+			lg.LogInfo(fmt.Sprintf("Web tool roundtrip: [%s:%s] %s", sessionID, requestID, summary))
+		}
 	}
 
 	// Create request
