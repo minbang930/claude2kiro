@@ -341,19 +341,11 @@ func TestBuildCodeWhispererRequestHistoryModeCurrentOnly(t *testing.T) {
 	}
 
 	cw := buildCodeWhispererRequest(req, TokenData{})
-	// current_only drops conversation turns but must keep the synthesized
-	// system-prompt pair — the model needs its instructions on every request.
-	if got := len(cw.ConversationState.History); got != 2 {
-		t.Fatalf("history length = %d, want 2 (system pair) in current_only mode", got)
+	if got := len(cw.ConversationState.History); got != 0 {
+		t.Fatalf("history length = %d, want 0 in current_only mode", got)
 	}
-	first, ok := cw.ConversationState.History[0].(HistoryUserMessage)
-	if !ok {
-		t.Fatalf("first history entry type = %T, want HistoryUserMessage", cw.ConversationState.History[0])
-	}
-	if got, want := first.UserInputMessage.Content, "system instructions"; got != want {
-		t.Fatalf("kept history content = %q, want system prompt %q", got, want)
-	}
-	if got, want := cw.ConversationState.CurrentMessage.UserInputMessage.Content, "third"; got != want {
+	want := "<claude-code-system-instructions>\nsystem instructions\n</claude-code-system-instructions>\n\nthird"
+	if got := cw.ConversationState.CurrentMessage.UserInputMessage.Content; got != want {
 		t.Fatalf("current content = %q, want %q", got, want)
 	}
 }
@@ -437,23 +429,19 @@ func TestBuildCodeWhispererRequestHistoryModeRecentKeepsSystemPrompt(t *testing.
 	}
 
 	cw := buildCodeWhispererRequest(req, TokenData{})
-	// 2 system-pair entries + the last user/assistant turn.
-	if got := len(cw.ConversationState.History); got != 4 {
-		t.Fatalf("history length = %d, want 4 (system pair + recent turn)", got)
+	if got := len(cw.ConversationState.History); got != 2 {
+		t.Fatalf("history length = %d, want 2 (recent turn only)", got)
 	}
 	first, ok := cw.ConversationState.History[0].(HistoryUserMessage)
 	if !ok {
 		t.Fatalf("first history entry type = %T, want HistoryUserMessage", cw.ConversationState.History[0])
 	}
-	if got, want := first.UserInputMessage.Content, "system instructions"; got != want {
-		t.Fatalf("first history content = %q, want system prompt %q", got, want)
+	if got, want := first.UserInputMessage.Content, "recent user"; got != want {
+		t.Fatalf("first recent history content = %q, want %q", got, want)
 	}
-	third, ok := cw.ConversationState.History[2].(HistoryUserMessage)
-	if !ok {
-		t.Fatalf("third history entry type = %T, want HistoryUserMessage", cw.ConversationState.History[2])
-	}
-	if got, want := third.UserInputMessage.Content, "recent user"; got != want {
-		t.Fatalf("first kept turn content = %q, want %q", got, want)
+	wantCurrent := "<claude-code-system-instructions>\nsystem instructions\n</claude-code-system-instructions>\n\ncurrent"
+	if got := cw.ConversationState.CurrentMessage.UserInputMessage.Content; got != wantCurrent {
+		t.Fatalf("current content = %q, want %q", got, wantCurrent)
 	}
 }
 
